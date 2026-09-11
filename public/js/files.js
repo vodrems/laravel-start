@@ -13,7 +13,7 @@ $(function () {
             const $el = $(this);
             const iso = $el.attr('datetime');
             const left = new Date(iso) - Date.now();
-            $el.text(left > 0 ? 'через ' + App.formatDuration(left) : 'ожидает удаления')
+            $el.text(left > 0 ? 'in ' + App.formatDuration(left) : 'pending deletion')
                 .attr('title', App.formatDate(iso));
         });
     }
@@ -36,7 +36,7 @@ $(function () {
 
         const $form = $(this);
         const name = $form.data('name');
-        if (!window.confirm('Удалить файл «' + name + '»?')) {
+        if (!window.confirm('Delete file "' + name + '"?')) {
             return;
         }
 
@@ -45,12 +45,12 @@ $(function () {
         $.ajax({ url: $form.attr('action'), method: 'DELETE' })
             .done(function () {
                 removeRow($form.closest('tr'));
-                App.toast('Файл «' + name + '» удалён, уведомление отправлено.', 'success');
+                App.toast('File "' + name + '" deleted, notification sent.', 'success');
             })
             .fail(function (xhr) {
                 if (xhr.status === 404) {
                     removeRow($form.closest('tr'));
-                    App.toast('Файл «' + name + '» уже был удалён.', 'warning');
+                    App.toast('File "' + name + '" was already deleted.', 'warning');
                     return;
                 }
                 $button.prop('disabled', false);

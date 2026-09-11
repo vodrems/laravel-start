@@ -17,10 +17,10 @@ $(function () {
     // Mirrors the server rules for instant feedback; the server still validates everything.
     function validate(file) {
         if (extensions.indexOf(extensionOf(file.name)) === -1) {
-            return 'Допустимы только файлы ' + extensions.join(', ').toUpperCase() + '.';
+            return 'Only ' + extensions.join(', ').toUpperCase() + ' files are allowed.';
         }
         if (file.size > maxSize) {
-            return 'Максимальный размер файла — ' + App.formatBytes(maxSize) + '.';
+            return 'The maximum file size is ' + App.formatBytes(maxSize) + '.';
         }
         return null;
     }
@@ -32,10 +32,10 @@ $(function () {
                 '<span class="upload-name text-break"></span>' +
                 '<small class="upload-size text-body-secondary text-nowrap"></small>' +
                 '</div>' +
-                '<div class="progress mt-2" role="progressbar" aria-label="Прогресс загрузки">' +
+                '<div class="progress mt-2" role="progressbar" aria-label="Upload progress">' +
                 '<div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>' +
                 '</div>' +
-                '<div class="upload-status small mt-1 text-body-secondary">Ожидание…</div>' +
+                '<div class="upload-status small mt-1 text-body-secondary">Waiting…</div>' +
                 '</li>'
         );
         $item.find('.upload-name').text(file.name);
@@ -46,7 +46,7 @@ $(function () {
 
     function setProgress($item, percent) {
         $item.find('.progress-bar').css('width', percent + '%');
-        $item.find('.upload-status').text('Загрузка… ' + percent + '%');
+        $item.find('.upload-status').text('Uploading… ' + percent + '%');
     }
 
     function finish($item, ok, message) {
@@ -89,7 +89,7 @@ $(function () {
             },
         })
             .done(function (response) {
-                finish($item, true, 'Загружен. Будет удалён ' + App.formatDate(response.data.expires_at) + '.');
+                finish($item, true, 'Uploaded. It will be deleted on ' + App.formatDate(response.data.expires_at) + '.');
             })
             .fail(function (xhr) {
                 finish($item, false, App.errorMessage(xhr));

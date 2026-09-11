@@ -41,7 +41,7 @@ class FileManagementTest extends TestCase
     {
         $this->get(route('files.index'))
             ->assertOk()
-            ->assertSee('Файлов пока нет');
+            ->assertSee('No files yet');
     }
 
     public function test_file_is_downloaded_with_original_name(): void
@@ -79,7 +79,7 @@ class FileManagementTest extends TestCase
 
         $this->delete(route('files.destroy', $file))
             ->assertRedirect(route('files.index'))
-            ->assertSessionHas('status', 'Файл «contract.pdf» удалён.');
+            ->assertSessionHas('status', 'File "contract.pdf" has been deleted.');
 
         $this->assertModelMissing($file);
     }

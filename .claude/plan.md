@@ -59,7 +59,7 @@ Scheduler (каждую минуту) → files:purge-expired ──────
 - `app/Listeners/SendFileDeletedNotification.php`: `implements ShouldQueue`, `$connection = 'rabbitmq'`, `$queue = 'notifications'`, `$tries = 3`. Отправляет `FileDeletedMail` на `config('filestorage.notification_email')`.
 - `app/Mail/FileDeletedMail.php` + `resources/views/mail/file-deleted.blade.php` (markdown): имя, размер, дата загрузки и удаления, причина.
 - `app/Console/Commands/PurgeExpiredFiles.php` (`files:purge-expired`): `StoredFile::expired()->chunkById(100, …)` → `FileRemover::delete($file, DeletionReason::Expired)`, выводит количество удалённых. В `routes/console.php`: `Schedule::command('files:purge-expired')->everyMinute()->withoutOverlapping()`.
-- `app/Http/Requests/StoreFileRequest.php`: `required|file|max:{max_size_kb}|mimes:pdf,docx|extensions:pdf,docx`. Сообщения об ошибках на русском.
+- `app/Http/Requests/StoreFileRequest.php`: `required|file|max:{max_size_kb}|mimes:pdf,docx|extensions:pdf,docx`. Сообщения об ошибках на английском (уточнение после утверждения плана: весь UI и письма — на английском).
 - `app/Http/Resources/StoredFileResource.php`: JSON для AJAX-ответа (id, name, human size, uploaded_at, expires_at, ссылки download/delete).
 - `app/Http/Controllers/FileController.php`:
   - `create()`: страница загрузки;

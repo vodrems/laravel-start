@@ -1,16 +1,16 @@
 <x-mail::message>
-# Файл удалён
+# File deleted
 
-Файл **{{ $file->originalName }}** удалён из хранилища.
+The file **{{ $file->originalName }}** has been removed from storage.
 
 <x-mail::table>
-| Параметр | Значение |
-|:---------|:---------|
-| Причина  | {{ $file->reason->label() }} |
-| Размер   | {{ \Illuminate\Support\Number::fileSize($file->size, maxPrecision: 1) }} |
-| Тип      | {{ $file->mimeType }} |
-| Загружен | {{ $file->uploadedAt->format('d.m.Y H:i T') }} |
-| Удалён   | {{ $file->deletedAt->format('d.m.Y H:i T') }} |
+| Field    | Value |
+|:---------|:------|
+| Reason   | {{ $file->reason->label() }} |
+| Size     | {{ \Illuminate\Support\Number::fileSize($file->size, maxPrecision: 1) }} |
+| Type     | {{ $file->mimeType }} |
+| Uploaded | {{ $file->uploadedAt->format('d M Y, H:i T') }} |
+| Deleted  | {{ $file->deletedAt->format('d M Y, H:i T') }} |
 </x-mail::table>
 
 {{ config('app.name') }}

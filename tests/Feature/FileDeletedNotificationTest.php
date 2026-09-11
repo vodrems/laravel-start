@@ -49,9 +49,9 @@ class FileDeletedNotificationTest extends TestCase
     {
         $mail = new FileDeletedMail($this->deletedFile(DeletionReason::Expired));
 
-        $mail->assertHasSubject('Файл «report.pdf» удалён (истёк срок хранения)');
+        $mail->assertHasSubject('File "report.pdf" deleted (retention period expired)');
         $mail->assertSeeInHtml('report.pdf');
-        $mail->assertSeeInHtml('истёк срок хранения');
+        $mail->assertSeeInHtml('retention period expired');
         $mail->assertSeeInHtml('1.5 MB');
     }
 

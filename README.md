@@ -8,6 +8,7 @@
 
 Веб-приложение для хранения PDF и DOCX файлов с ограниченным сроком хранения (24 часа).
 Laravel 13 · PHP 8.4 · MySQL 8.4 · RabbitMQ 4 · Bootstrap 5 + jQuery · Docker Compose.
+Интерфейс приложения и email-уведомления — на английском.
 
 ### Тестовое задание
 
@@ -113,12 +114,12 @@ docker compose up -d
 
 1. Откройте http://localhost:8080 и загрузите несколько PDF/DOCX (кнопкой или перетаскиванием). У каждого файла свой прогресс-бар. Файл `.txt`, файл больше 10MB или `.txt`, переименованный в `.pdf`, будут отклонены с понятной ошибкой.
 2. Откройте http://localhost:8080/files: видны список, размер, время загрузки и обратный отсчёт до удаления. Скачивание отдаёт файл с исходным именем.
-3. Удалите файл вручную. Строка исчезнет, а в Mailpit (http://localhost:8025) появится письмо «Файл … удалён (удалён вручную)».
+3. Удалите файл вручную. Строка исчезнет, а в Mailpit (http://localhost:8025) появится письмо «File "…" deleted (deleted manually)».
 4. **Автоудаление.** Чтобы не ждать 24 часа, «состарьте» файлы:
    ```bash
    docker compose exec app php artisan tinker --execute="App\Models\StoredFile::query()->update(['expires_at' => now()->subMinute()])"
    ```
-   В течение минуты `scheduler` удалит их, и в Mailpit придут письма с причиной «истёк срок хранения». Можно запустить сразу: `make purge`. За процессом можно следить: `make logs`.
+   В течение минуты `scheduler` удалит их, и в Mailpit придут письма с причиной «retention period expired». Можно запустить сразу: `make purge`. За процессом можно следить: `make logs`.
 5. **Уведомление действительно идёт через RabbitMQ.** Остановите воркер (`docker compose stop queue`) и удалите файл. В RabbitMQ UI → Queues → `notifications` будет `Ready: 1`, письма нет. Запустите воркер (`docker compose start queue`): сообщение будет обработано, письмо появится в Mailpit.
 
 ### Тесты
@@ -203,6 +204,7 @@ tests/Feature/                              тесты
 
 A web application for storing PDF and DOCX files with a limited retention period (24 hours).
 Laravel 13 · PHP 8.4 · MySQL 8.4 · RabbitMQ 4 · Bootstrap 5 + jQuery · Docker Compose.
+The user interface and email notifications are in English.
 
 ### Task
 
@@ -308,12 +310,12 @@ After changing `.env`, restart the workers: `make restart`.
 
 1. Open http://localhost:8080 and upload a few PDF/DOCX files (button or drag & drop). Each file gets its own progress bar. A `.txt`, a file over 10MB, or a `.txt` renamed to `.pdf` is rejected with a clear message.
 2. Open http://localhost:8080/files. You see the list, sizes, upload time and a countdown to deletion. Download returns the file under its original name.
-3. Delete a file manually. The row disappears, and an email "Файл … удалён (удалён вручную)" arrives in Mailpit (http://localhost:8025).
+3. Delete a file manually. The row disappears, and an email "File "…" deleted (deleted manually)" arrives in Mailpit (http://localhost:8025).
 4. **Automatic deletion.** Instead of waiting 24 hours, make the files expire:
    ```bash
    docker compose exec app php artisan tinker --execute="App\Models\StoredFile::query()->update(['expires_at' => now()->subMinute()])"
    ```
-   Within a minute the `scheduler` deletes them, and Mailpit receives emails with the reason "истёк срок хранения" (retention expired). To run it immediately: `make purge`. To watch the process: `make logs`.
+   Within a minute the `scheduler` deletes them, and Mailpit receives emails with the reason "retention period expired". To run it immediately: `make purge`. To watch the process: `make logs`.
 5. **The notification really goes through RabbitMQ.** Stop the worker (`docker compose stop queue`) and delete a file. RabbitMQ UI → Queues → `notifications` shows `Ready: 1` and no email arrives. Start the worker (`docker compose start queue`): the message is consumed and the email appears in Mailpit.
 
 ### Tests

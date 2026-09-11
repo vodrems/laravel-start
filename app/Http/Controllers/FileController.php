@@ -60,6 +60,6 @@ class FileController extends Controller
 
         return redirect()
             ->route('files.index')
-            ->with('status', "Файл «{$file->original_name}» удалён.");
+            ->with('status', "File \"{$file->original_name}\" has been deleted.");
     }
 }

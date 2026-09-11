@@ -28,7 +28,7 @@ final class FileUploadService implements FileUploader
         );
 
         if ($path === false) {
-            throw new RuntimeException('Не удалось сохранить файл.');
+            throw new RuntimeException('Failed to store the uploaded file.');
         }
 
         try {

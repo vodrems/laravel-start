@@ -16,7 +16,7 @@ final class FileDeletedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "Файл «{$this->file->originalName}» удалён ({$this->file->reason->label()})",
+            subject: "File \"{$this->file->originalName}\" deleted ({$this->file->reason->label()})",
         );
     }
 

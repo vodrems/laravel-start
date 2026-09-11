@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,8 +19,8 @@
                 <i class="bi bi-file-earmark-lock"></i> {{ config('app.name') }}
             </a>
             <div class="navbar-nav">
-                <a class="nav-link @if (request()->routeIs('files.create')) active @endif" href="{{ route('files.create') }}">Загрузка</a>
-                <a class="nav-link @if (request()->routeIs('files.index')) active @endif" href="{{ route('files.index') }}">Файлы</a>
+                <a class="nav-link @if (request()->routeIs('files.create')) active @endif" href="{{ route('files.create') }}">Upload</a>
+                <a class="nav-link @if (request()->routeIs('files.index')) active @endif" href="{{ route('files.index') }}">Files</a>
             </div>
         </div>
     </nav>
@@ -29,7 +29,7 @@
         @if (session('status'))
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 {{ session('status') }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Закрыть"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         @endif
 

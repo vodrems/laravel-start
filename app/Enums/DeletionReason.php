@@ -10,8 +10,8 @@ enum DeletionReason: string
     public function label(): string
     {
         return match ($this) {
-            self::Manual => 'удалён вручную',
-            self::Expired => 'истёк срок хранения',
+            self::Manual => 'deleted manually',
+            self::Expired => 'retention period expired',
         };
     }
 }

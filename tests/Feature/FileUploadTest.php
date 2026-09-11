@@ -26,7 +26,7 @@ class FileUploadTest extends TestCase
     {
         $this->get(route('files.create'))
             ->assertOk()
-            ->assertSee('Загрузка файлов')
+            ->assertSee('Upload files')
             ->assertSee(route('files.store'));
     }
 
@@ -97,6 +97,6 @@ class FileUploadTest extends TestCase
     {
         $this->postJson(route('files.store'))
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['file' => 'Выберите файл для загрузки.']);
+            ->assertJsonValidationErrors(['file' => 'Please choose a file to upload.']);
     }
 }
