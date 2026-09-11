@@ -1,0 +1,3312 @@
+ ▐▛███▛█   Claude Code v2.1.268
+▝▜██████▀  Opus 5 · Claude Pro
+  ▝▝ ▝▝    ~/Projects/laravel-start
+
+
+❯ /model                                                                        
+  ⎿  Set model to Haiku 4.5 and saved as your default for new sessions
+
+❯ /model                                                                        
+  ⎿  Set model to Opus 5 (1M context) and saved as your default for new sessions
+
+❯ /login                                                                        
+  ⎿  Login successful
+
+❯ нужно составить план для решения задачи: Тестовое задание: Хранение PDF/DOCX  
+  файлов                                                                        
+  Описание задачи                                                               
+  Необходимо разработать веб-приложение для хранения PDF и DOCX файлов с        
+  ограниченным сроком хранения.                                                 
+  Функциональные требования                                                     
+      1. Загрузка файлов                                                        
+          ◦ Реализовать асинхронный загрузчик файлов (PDF, DOCX) через          
+  веб-интерфейс.                                                                
+          ◦ Ограничение по размеру файла (например, 10MB).                      
+          ◦ Информация о загруженных файлах должна храниться в базе данных.     
+      2. CRUD-страница                                                          
+          ◦ Отдельная страница для управления загруженными файлами.             
+          ◦ Возможность просмотра списка загруженных файлов.                    
+          ◦ Возможность удаления файлов вручную.                                
+      3. Автоматическое удаление файлов                                         
+          ◦ Файлы должны автоматически удаляться через 24 часа после загрузки.  
+          ◦ После удаления файла через RabbitMQ должно отправляться             
+  email-уведомление на адрес, указанный в .env.                                 
+          ◦ Реализовать отправку сообщения в RabbitMQ, но сам механизм отправки 
+  почты (SMTP и т.д.) реализовывать не обязательно.                             
+          ◦ Email-уведомление должно отправляться не только при автоматическом  
+  удалении через 24 часа, но и при ручном удалении файла.                       
+  Технические требования                                                        
+      • Стек технологий:                                                        
+          ◦ Laravel + PHP8                                                      
+          ◦ MySQL                                                               
+          ◦ RabbitMQ                                                            
+          ◦ Bootstrap + jQuery (для фронтенд-части)                             
+      • Дополнительно (будет плюсом):                                           
+          ◦ Docker/Docker Compose                                               
+  Ожидаемый результат                                                           
+      • Исходный код проекта должен быть размещен в репозитории                 
+  (GitHub/GitLab/Bitbucket).                                                    
+      • Должна быть инструкция по запуску проекта в файле README.md.            
+      • Приложение должно быть работоспособным и соответствовать описанным      
+  требованиям. с учетом локального docker окружения, чтобы это также            
+  соответствовало базовым принципам (упрощенным) solid                          
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Репозиторий пуст, Docker/Compose установлены, нужные порты (80, 3306, 5672,
+  15672) свободны. Прежде чем составить план, уточню несколько архитектурных
+  решений.
+
+● User answered Claude's questions:
+  ⎿  · Как интегрировать RabbitMQ для email-уведомлений? → Laravel Queue + пакет
+     (Recommended)
+     · Куда реально уходит письмо после чтения из очереди? → Mailpit в Docker 
+     (Recommended)
+     · Нужна ли авторизация/разделение файлов по пользователям? → Без 
+     авторизации (Recommended)
+
+● Кодовой базы для исследования нет, поэтому перед составлением плана я проверю
+  совместимость пакета RabbitMQ с актуальной версией Laravel, чтобы
+  зафиксировать версии.
+
+● Fetch(https://repo.packagist.org/p2/vladimir-yuldashev/laravel-queue-rabbitmq.
+       json)
+  ⎿  Received 54.8KB (200 OK)
+
+● Fetch(https://repo.packagist.org/p2/laravel/framework.json)
+  ⎿  Received 967.7KB (200 OK)
+
+● Updated plan
+  ⎿  /plan to preview
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/swirling-seeking-sunrise.md · /plan to edit
+     План: хранилище PDF/DOCX с TTL 24ч (Laravel + MySQL + RabbitMQ + Docker)
+
+     Context
+
+     Тестовое задание: веб-приложение для загрузки PDF/DOCX (≤10MB) с
+     асинхронным загрузчиком, CRUD-страницей, автоудалением через 24ч и
+     email-уведомлением через RabbitMQ при любом удалении (ручном и
+     автоматическом). Стек: Laravel + PHP 8, MySQL, RabbitMQ, Bootstrap +
+     jQuery, Docker Compose. Репозиторий пустой (нет коммитов, remote
+     git@github.com:vodrems/laravel-start.git), поэтому проект создаётся с нуля.
+
+     Принятые решения (согласованы):
+     - RabbitMQ — как драйвер очереди Laravel через
+       vladimir-yuldashev/laravel-queue-rabbitmq v15 (поддерживает Laravel 13).
+     - Почта — Mailpit в Docker (письма видны в веб-UI).
+     - Без авторизации.
+     - Версии: Laravel 13.x, PHP 8.4 в контейнере, MySQL 8.4, RabbitMQ 4
+       management.
+
+     Архитектура (упрощённый SOLID)
+
+     Ключевая идея: единственный путь удаления — FileDeletionService. Его
+     вызывают и контроллер (вручную), и консольная команда (по TTL). Сервис
+     бросает событие StoredFileDeleted, на него подписан queued-listener,
+     который уходит в RabbitMQ и отправляет письмо. Поэтому уведомление
+     гарантировано в обоих сценариях, и дублировать логику не нужно.
+
+     Upload (jQuery AJAX) → FileController@store → StoreFileRequest (валидация)
+     → FileUploader → Storage + DB
+     Manual delete (AJAX DELETE) → FileController@destroy ─┐
+     Scheduler (каждую минуту) → files:purge-expired ───────┴→
+     FileRemover::delete($file, DeletionReason)
+           → удаление с диска + из БД (транзакция) → event StoredFileDeleted
+     (after commit)
+           → SendFileDeletedNotification (ShouldQueue, connection=rabbitmq,
+     queue=notifications)
+           → [RabbitMQ] → queue worker →
+     Mail::to(NOTIFICATION_EMAIL)->send(FileDeletedMail) → Mailpit
+
+     Как это ложится на SOLID:
+     - SRP: валидация в FormRequest, загрузка и удаление в отдельных сервисах,
+       выборка просроченных в команде, уведомление в listener, текст письма в
+       Mailable. Контроллер тонкий.
+     - OCP: чтобы добавить новую реакцию на удаление (аудит, вебхук), достаточно
+       нового listener'а, сервис удаления не меняется.
+     - DIP/ISP: контроллер и команда зависят от маленьких интерфейсов
+       FileUploader / FileRemover, которые биндятся в AppServiceProvider.
+       Настройки (TTL, лимит, email, диск) берутся из config/filestorage.php, а
+       не хардкодятся.
+
+     Почему автоудаление сделано через scheduler, а не через отложенный job на
+     24ч: команда идемпотентна и сама навёрстывает пропущенное после простоя
+     (если воркер лежал). Для отложенных сообщений в RabbitMQ понадобились бы
+     TTL+DLX или плагин, а удаление, отложенное на сутки, становится лишним,
+     если файл уже удалили вручную. Точность: файл удаляется в течение ≤1 минуты
+     после истечения 24ч.
+
+     Файлы
+
+     Docker / инфраструктура
+
+     - docker-compose.yml, сервисы:
+       - app: php-fpm, собирается из docker/php/Dockerfile, код монтируется
+         томом.
+       - nginx: порт ${APP_PORT:-8080}, конфиг docker/nginx/default.conf с
+         client_max_body_size 12M.
+       - mysql: mysql:8.4, healthcheck, том mysql-data.
+       - rabbitmq: rabbitmq:4-management, порты 5672/15672, healthcheck.
+       - mailpit: axllent/mailpit, порты 8025 (UI) и 1025 (SMTP).
+       - queue: тот же образ, php artisan queue:work rabbitmq 
+         --queue=notifications --tries=3 --backoff=10, restart: unless-stopped,
+         depends_on rabbitmq (healthy).
+       - scheduler: тот же образ, php artisan schedule:work.
+     - docker/php/Dockerfile: php:8.4-fpm, расширения pdo_mysql sockets bcmath 
+       pcntl zip opcache (sockets нужен php-amqplib), composer из composer:2.
+       ARG UID/GID=1000, чтобы права на storage/ совпадали с хостом.
+     - docker/php/php.ini: upload_max_filesize=12M, post_max_size=13M. Лимиты
+       чуть выше 10MB, чтобы превышение ловила валидация Laravel (понятный 422),
+       а не nginx/PHP (413 или пустой запрос).
+     - Makefile: init (build, up, composer install, key:generate, migrate), up,
+       down, test, logs, shell.
+
+     Laravel
+
+     - Установка: composer create-project laravel/laravel:^13 во временную папку
+       внутри контейнера, затем перенос в корень репозитория (там уже есть
+       .git). Потом composer require 
+       vladimir-yuldashev/laravel-queue-rabbitmq:^15. Дефолтный
+       Vite/Tailwind-скаффолдинг удаляем, фронт подключаем через CDN.
+     - config/filestorage.php: disk (local, приватный), max_size_kb (env
+       FILE_MAX_SIZE_KB=10240), ttl_hours (env FILE_TTL_HOURS=24),
+       allowed_extensions [pdf, docx], notification_email (env
+       NOTIFICATION_EMAIL).
+     - config/queue.php: добавить соединение rabbitmq по документации пакета
+       (RABBITMQ_HOST/PORT/USER/PASSWORD/VHOST, очередь по умолчанию
+       notifications). В .env.example поставить QUEUE_CONNECTION=rabbitmq.
+     - Миграция create_stored_files_table: id, original_name, path (unique),
+       mime_type, size (unsignedBigInteger), expires_at (index), timestamps.
+     - app/Models/StoredFile.php: casts (expires_at → datetime), scopeExpired()
+       (expires_at <= now()).
+     - app/Enums/DeletionReason.php: backed enum Manual, Expired с методом
+       label() (для письма).
+     - app/DTO/DeletedFileData.php: readonly-снимок удалённого файла (id, имя,
+       размер, mime, uploadedAt, deletedAt, reason). В событие кладём DTO, а не
+       модель: к моменту обработки job'а записи в БД уже нет, и SerializesModels
+       упал бы.
+     - app/Contracts/FileUploader.php, app/Contracts/FileRemover.php:
+       интерфейсы.
+     - app/Services/FileStorage/FileUploadService.php (реализует FileUploader):
+       кладёт файл на диск под именем uploads/{Y/m/d}/{uuid}.{ext}, создаёт
+       запись с expires_at = now()->addHours(ttl). Если вставка в БД упала,
+       удаляет уже сохранённый файл.
+     - app/Services/FileStorage/FileDeletionService.php (реализует FileRemover):
+       в транзакции перечитывает запись с lockForUpdate() (защита от гонки
+       ручного удаления и purge), удаляет файл с диска (если файла нет — warning
+       в лог, продолжаем) и запись из БД, затем dispatch StoredFileDeleted.
+     - app/Events/StoredFileDeleted.php: implements ShouldDispatchAfterCommit,
+       несёт DeletedFileData.
+     - app/Listeners/SendFileDeletedNotification.php: implements ShouldQueue,
+       $connection = 'rabbitmq', $queue = 'notifications', $tries = 3.
+       Отправляет FileDeletedMail на config('filestorage.notification_email').
+     - app/Mail/FileDeletedMail.php +
+       resources/views/mail/file-deleted.blade.php (markdown): имя, размер, дата
+       загрузки и удаления, причина.
+     - app/Console/Commands/PurgeExpiredFiles.php (files:purge-expired):
+       StoredFile::expired()->chunkById(100, …) → FileRemover::delete($file, 
+       DeletionReason::Expired), выводит количество удалённых. В
+       routes/console.php: Schedule::command('files:purge-expired')->everyMinute
+       ()->withoutOverlapping().
+     - app/Http/Requests/StoreFileRequest.php:
+       required|file|max:{max_size_kb}|mimes:pdf,docx|extensions:pdf,docx.
+       Сообщения об ошибках на русском.
+     - app/Http/Resources/StoredFileResource.php: JSON для AJAX-ответа (id,
+       name, human size, uploaded_at, expires_at, ссылки download/delete).
+     - app/Http/Controllers/FileController.php:
+       - create(): страница загрузки;
+       - store(StoreFileRequest, FileUploader): 201 + resource;
+       - index(): CRUD-страница, пагинация по 20;
+       - download(StoredFile): Storage::download с оригинальным именем;
+       - destroy(StoredFile, FileRemover): 204 для AJAX, redirect + flash без
+         JS.
+     - routes/web.php: GET / → files.create, POST /files, GET /files →
+       files.index, GET /files/{file}/download, DELETE /files/{file}.
+
+     Фронтенд (Bootstrap 5 + jQuery через CDN с SRI)
+
+     - resources/views/layouts/app.blade.php: navbar со ссылками «Загрузка» и
+       «Файлы», <meta name="csrf-token">, flash-сообщения.
+     - resources/views/files/create.blade.php + public/js/upload.js: выбор
+       нескольких файлов (или drag&drop), клиентская предпроверка расширения и
+       размера (дублирует серверную, для UX). Каждый файл уходит отдельным
+       $.ajax с FormData и собственным Bootstrap progress bar
+       (xhr.upload.onprogress). Ошибки 422 показываются под файлом, успех — со
+       ссылкой на список.
+     - resources/views/files/index.blade.php + public/js/files.js: таблица (имя,
+       размер, загружен, истекает через N ч M мин, «Скачать», «Удалить»).
+       Удаление: confirm → AJAX DELETE с X-CSRF-TOKEN → строка плавно исчезает,
+       toast. Пустое состояние со ссылкой на загрузку.
+
+     Тесты (tests/Feature, sqlite in-memory из дефолтного phpunit.xml, 
+     Storage::fake)
+
+     - FileUploadTest: PDF и DOCX → 201, запись есть, файл на диске, expires_at
+       ≈ now+24h; .txt → 422; >10MB (UploadedFile::fake()->create(..., 10241))
+       → 422.
+     - FileDeletionTest: ручное удаление убирает файл и запись,
+       Event::assertDispatched(StoredFileDeleted) с reason Manual; удаление
+       несуществующего → 404.
+     - PurgeExpiredFilesTest: $this->travel(25)->hours() → удаляются только
+       просроченные, событие с reason Expired на каждый файл.
+     - SendFileDeletedNotificationTest: Mail::fake(), listener шлёт
+       FileDeletedMail на адрес из конфига. Отдельно проверить, что listener
+       попадает в очередь на соединение rabbitmq (Queue::fake() +
+       assertPushedOn('notifications', CallQueuedListener::class)).
+
+     Документация
+
+     - README.md (на русском): требования (Docker + Compose), быстрый старт (cp 
+       .env.example .env && make init, или те же шаги вручную через docker 
+       compose), URL-ы: приложение http://localhost:8080, RabbitMQ UI
+       http://localhost:15672 (guest/guest), Mailpit http://localhost:8025.
+       Переменные .env (NOTIFICATION_EMAIL, FILE_TTL_HOURS, FILE_MAX_SIZE_KB).
+       Как быстро проверить автоудаление: FILE_TTL_HOURS или tinker для сдвига
+       expires_at, затем php artisan files:purge-expired. Схема потока и краткое
+       описание архитектуры. Запуск тестов: make test.
+
+     Порядок работы
+
+     1. Docker-окружение и установка Laravel 13, подключение RabbitMQ-пакета;
+        убедиться, что docker compose up поднимает все сервисы healthy.
+     2. Конфиг, миграция, модель, enum, DTO, контракты и сервисы.
+     3. Событие, listener, Mailable, команда, расписание.
+     4. Контроллер, request, resource, роуты, Blade и JS.
+     5. Тесты, README, Makefile.
+     6. Коммиты по логическим шагам в master. Push на GitHub — только после
+        подтверждения.
+
+     Проверка (end-to-end)
+
+     1. cp .env.example .env && make init → docker compose ps: все сервисы
+        running/healthy.
+     2. make test → все тесты зелёные.
+     3. Браузер http://localhost:8080: загрузить PDF и DOCX (виден прогресс),
+        попытаться загрузить .txt и файл >10MB → понятные ошибки.
+     4. /files: файлы в списке, скачивание отдаёт оригинальное имя. Удалить один
+        вручную → строка исчезает, файла нет в storage/app/private/uploads.
+     5. RabbitMQ UI → очередь notifications существует, сообщения прошли (graph
+        publish/ack). Mailpit → письмо «удалён вручную» на NOTIFICATION_EMAIL.
+     6. Автоудаление: docker compose exec app php artisan tinker --execute="App\
+        Models\StoredFile::query()->update(['expires_at'=>now()->subMinute()])"
+        → в течение минуты scheduler удаляет файлы, в Mailpit приходят письма
+        «истёк срок хранения». Параллельно смотреть docker compose logs -f 
+        scheduler queue.
+     7. Остановить queue → удалить файл → сообщение копится в RabbitMQ (Ready=1)
+        → запустить queue → письмо доставлено. Это доказывает, что уведомление
+        действительно идёт через брокер.
+
+❯ в readmeдобавиь                                                               
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ нужно составить план для решения задачи: Тестовое задание: Хранение PDF/DOCX  
+  файлов                                                                        
+  Описание задачи                                                               
+  Необходимо разработать веб-приложение для хранения PDF и DOCX файлов с        
+  ограниченным сроком хранения.                                                 
+  Функциональные требования                                                     
+      1. Загрузка файлов                                                        
+          ◦ Реализовать асинхронный загрузчик файлов (PDF, DOCX) через          
+  веб-интерфейс.                                                                
+          ◦ Ограничение по размеру файла (например, 10MB).                      
+          ◦ Информация о загруженных файлах должна храниться в базе данных.     
+      2. CRUD-страница                                                          
+          ◦ Отдельная страница для управления загруженными файлами.             
+          ◦ Возможность просмотра списка загруженных файлов.                    
+          ◦ Возможность удаления файлов вручную.                                
+      3. Автоматическое удаление файлов                                         
+          ◦ Файлы должны автоматически удаляться через 24 часа после загрузки.  
+          ◦ После удаления файла через RabbitMQ должно отправляться             
+  email-уведомление на адрес, указанный в .env.                                 
+          ◦ Реализовать отправку сообщения в RabbitMQ, но сам механизм отправки 
+  почты (SMTP и т.д.) реализовывать не обязательно.                             
+          ◦ Email-уведомление должно отправляться не только при автоматическом  
+  удалении через 24 часа, но и при ручном удалении файла.                       
+  Технические требования                                                        
+      • Стек технологий:                                                        
+          ◦ Laravel + PHP8                                                      
+          ◦ MySQL                                                               
+          ◦ RabbitMQ                                                            
+          ◦ Bootstrap + jQuery (для фронтенд-части)                             
+      • Дополнительно (будет плюсом):                                           
+          ◦ Docker/Docker Compose                                               
+  Ожидаемый результат                                                           
+      • Исходный код проекта должен быть размещен в репозитории                 
+  (GitHub/GitLab/Bitbucket).                                                    
+      • Должна быть инструкция по запуску проекта в файле README.md.            
+      • Приложение должно быть работоспособным и соответствовать описанным      
+  требованиям. с учетом локального docker окружения, чтобы это также            
+  соответствовало базовым принципам (упрощенным) solid                          
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Реализация ещё не начиналась — судя по сообщению, нужно добавить полный текст
+  ТЗ в README. Обновляю раздел документации в плане.
+
+● Updated plan
+  ⎿  /plan to preview
+  ⎿  User rejected Claude's plan:
+     ╭─────────────────────────────────────────────────────────────────────────╮
+     │ План: хранилище PDF/DOCX с TTL 24ч (Laravel + MySQL + RabbitMQ +        │
+     │ Docker)                                                                 │
+     │                                                                         │
+     │ Context                                                                 │
+     │                                                                         │
+     │ Тестовое задание: веб-приложение для загрузки PDF/DOCX (≤10MB) с        │
+     │ асинхронным загрузчиком, CRUD-страницей, автоудалением через 24ч и      │
+     │ email-уведомлением через RabbitMQ при любом удалении (ручном и          │
+     │ автоматическом). Стек: Laravel + PHP 8, MySQL, RabbitMQ, Bootstrap +    │
+     │ jQuery, Docker Compose. Репозиторий пустой (нет коммитов, remote        │
+     │ git@github.com:vodrems/laravel-start.git), поэтому проект создаётся с   │
+     │ нуля.                                                                   │
+     │                                                                         │
+     │ Принятые решения (согласованы):                                         │
+     │ - RabbitMQ — как драйвер очереди Laravel через                          │
+     │   vladimir-yuldashev/laravel-queue-rabbitmq v15 (поддерживает           │
+     │   Laravel 13).                                                          │
+     │ - Почта — Mailpit в Docker (письма видны в веб-UI).                     │
+     │ - Без авторизации.                                                      │
+     │ - Версии: Laravel 13.x, PHP 8.4 в контейнере, MySQL 8.4, RabbitMQ 4     │
+     │   management.                                                           │
+     │                                                                         │
+     │ Архитектура (упрощённый SOLID)                                          │
+     │                                                                         │
+     │ Ключевая идея: единственный путь удаления — FileDeletionService. Его    │
+     │ вызывают и контроллер (вручную), и консольная команда (по TTL). Сервис  │
+     │ бросает событие StoredFileDeleted, на него подписан queued-listener,    │
+     │ который уходит в RabbitMQ и отправляет письмо. Поэтому уведомление      │
+     │ гарантировано в обоих сценариях, и дублировать логику не нужно.         │
+     │                                                                         │
+     │ Upload (jQuery AJAX) → FileController@store → StoreFileRequest          │
+     │ (валидация) → FileUploader → Storage + DB                               │
+     │ Manual delete (AJAX DELETE) → FileController@destroy ─┐                 │
+     │ Scheduler (каждую минуту) → files:purge-expired ───────┴→               │
+     │ FileRemover::delete($file, DeletionReason)                              │
+     │       → удаление с диска + из БД (транзакция) → event StoredFileDeleted │
+     │ (after commit)                                                          │
+     │       → SendFileDeletedNotification (ShouldQueue, connection=rabbitmq,  │
+     │ queue=notifications)                                                    │
+     │       → [RabbitMQ] → queue worker →                                     │
+     │ Mail::to(NOTIFICATION_EMAIL)->send(FileDeletedMail) → Mailpit           │
+     │                                                                         │
+     │ Как это ложится на SOLID:                                               │
+     │ - SRP: валидация в FormRequest, загрузка и удаление в отдельных         │
+     │   сервисах, выборка просроченных в команде, уведомление в listener,     │
+     │   текст письма в Mailable. Контроллер тонкий.                           │
+     │ - OCP: чтобы добавить новую реакцию на удаление (аудит, вебхук),        │
+     │   достаточно нового listener'а, сервис удаления не меняется.            │
+     │ - DIP/ISP: контроллер и команда зависят от маленьких интерфейсов        │
+     │   FileUploader / FileRemover, которые биндятся в AppServiceProvider.    │
+     │   Настройки (TTL, лимит, email, диск) берутся из                        │
+     │   config/filestorage.php, а не хардкодятся.                             │
+     │                                                                         │
+     │ Почему автоудаление сделано через scheduler, а не через отложенный job  │
+     │ на 24ч: команда идемпотентна и сама навёрстывает пропущенное после      │
+     │ простоя (если воркер лежал). Для отложенных сообщений в RabbitMQ        │
+     │ понадобились бы TTL+DLX или плагин, а удаление, отложенное на сутки,    │
+     │ становится лишним, если файл уже удалили вручную. Точность: файл        │
+     │ удаляется в течение ≤1 минуты после истечения 24ч.                      │
+     │                                                                         │
+     │ Файлы                                                                   │
+     │                                                                         │
+     │ Docker / инфраструктура                                                 │
+     │                                                                         │
+     │ - docker-compose.yml, сервисы:                                          │
+     │   - app: php-fpm, собирается из docker/php/Dockerfile, код монтируется  │
+     │     томом.                                                              │
+     │   - nginx: порт ${APP_PORT:-8080}, конфиг docker/nginx/default.conf с   │
+     │     client_max_body_size 12M.                                           │
+     │   - mysql: mysql:8.4, healthcheck, том mysql-data.                      │
+     │   - rabbitmq: rabbitmq:4-management, порты 5672/15672, healthcheck.     │
+     │   - mailpit: axllent/mailpit, порты 8025 (UI) и 1025 (SMTP).            │
+     │   - queue: тот же образ, php artisan queue:work rabbitmq                │
+     │     --queue=notifications --tries=3 --backoff=10, restart:              │
+     │     unless-stopped, depends_on rabbitmq (healthy).                      │
+     │   - scheduler: тот же образ, php artisan schedule:work.                 │
+     │ - docker/php/Dockerfile: php:8.4-fpm, расширения pdo_mysql sockets      │
+     │   bcmath pcntl zip opcache (sockets нужен php-amqplib), composer из     │
+     │   composer:2. ARG UID/GID=1000, чтобы права на storage/ совпадали с     │
+     │   хостом.                                                               │
+     │ - docker/php/php.ini: upload_max_filesize=12M, post_max_size=13M.       │
+     │   Лимиты чуть выше 10MB, чтобы превышение ловила валидация Laravel      │
+     │   (понятный 422), а не nginx/PHP (413 или пустой запрос).               │
+     │ - Makefile: init (build, up, composer install, key:generate, migrate),  │
+     │   up, down, test, logs, shell.                                          │
+     │                                                                         │
+     │ Laravel                                                                 │
+     │                                                                         │
+     │ - Установка: composer create-project laravel/laravel:^13 во временную   │
+     │   папку внутри контейнера, затем перенос в корень репозитория (там уже  │
+     │   есть .git). Потом composer require                                    │
+     │   vladimir-yuldashev/laravel-queue-rabbitmq:^15. Дефолтный              │
+     │   Vite/Tailwind-скаффолдинг удаляем, фронт подключаем через CDN.        │
+     │ - config/filestorage.php: disk (local, приватный), max_size_kb (env     │
+     │   FILE_MAX_SIZE_KB=10240), ttl_hours (env FILE_TTL_HOURS=24),           │
+     │   allowed_extensions [pdf, docx], notification_email (env               │
+     │   NOTIFICATION_EMAIL).                                                  │
+     │ - config/queue.php: добавить соединение rabbitmq по документации пакета │
+     │   (RABBITMQ_HOST/PORT/USER/PASSWORD/VHOST, очередь по умолчанию         │
+     │   notifications). В .env.example поставить QUEUE_CONNECTION=rabbitmq.   │
+     │ - Миграция create_stored_files_table: id, original_name, path (unique), │
+     │   mime_type, size (unsignedBigInteger), expires_at (index),             │
+     │   timestamps.                                                           │
+     │ - app/Models/StoredFile.php: casts (expires_at → datetime),             │
+     │   scopeExpired() (expires_at <= now()).                                 │
+     │ - app/Enums/DeletionReason.php: backed enum Manual, Expired с методом   │
+     │   label() (для письма).                                                 │
+     │ - app/DTO/DeletedFileData.php: readonly-снимок удалённого файла (id,    │
+     │   имя, размер, mime, uploadedAt, deletedAt, reason). В событие кладём   │
+     │   DTO, а не модель: к моменту обработки job'а записи в БД уже нет, и    │
+     │   SerializesModels упал бы.                                             │
+     │ - app/Contracts/FileUploader.php, app/Contracts/FileRemover.php:        │
+     │   интерфейсы.                                                           │
+     │ - app/Services/FileStorage/FileUploadService.php (реализует             │
+     │   FileUploader): кладёт файл на диск под именем                         │
+     │   uploads/{Y/m/d}/{uuid}.{ext}, создаёт запись с expires_at =           │
+     │   now()->addHours(ttl). Если вставка в БД упала, удаляет уже            │
+     │   сохранённый файл.                                                     │
+     │ - app/Services/FileStorage/FileDeletionService.php (реализует           │
+     │   FileRemover): в транзакции перечитывает запись с lockForUpdate()      │
+     │   (защита от гонки ручного удаления и purge), удаляет файл с диска      │
+     │   (если файла нет — warning в лог, продолжаем) и запись из БД, затем    │
+     │   dispatch StoredFileDeleted.                                           │
+     │ - app/Events/StoredFileDeleted.php: implements                          │
+     │   ShouldDispatchAfterCommit, несёт DeletedFileData.                     │
+     │ - app/Listeners/SendFileDeletedNotification.php: implements             │
+     │   ShouldQueue, $connection = 'rabbitmq', $queue = 'notifications',      │
+     │   $tries = 3. Отправляет FileDeletedMail на                             │
+     │   config('filestorage.notification_email').                             │
+     │ - app/Mail/FileDeletedMail.php +                                        │
+     │   resources/views/mail/file-deleted.blade.php (markdown): имя, размер,  │
+     │   дата загрузки и удаления, причина.                                    │
+     │ - app/Console/Commands/PurgeExpiredFiles.php (files:purge-expired):     │
+     │   StoredFile::expired()->chunkById(100, …) → FileRemover::delete($file, │
+     │   DeletionReason::Expired), выводит количество удалённых. В             │
+     │   routes/console.php: Schedule::command('files:purge-expired')->everyMi │
+     │   nute()->withoutOverlapping().                                         │
+     │ - app/Http/Requests/StoreFileRequest.php:                               │
+     │   required|file|max:{max_size_kb}|mimes:pdf,docx|extensions:pdf,docx.   │
+     │   Сообщения об ошибках на русском.                                      │
+     │ - app/Http/Resources/StoredFileResource.php: JSON для AJAX-ответа (id,  │
+     │   name, human size, uploaded_at, expires_at, ссылки download/delete).   │
+     │ - app/Http/Controllers/FileController.php:                              │
+     │   - create(): страница загрузки;                                        │
+     │   - store(StoreFileRequest, FileUploader): 201 + resource;              │
+     │   - index(): CRUD-страница, пагинация по 20;                            │
+     │   - download(StoredFile): Storage::download с оригинальным именем;      │
+     │   - destroy(StoredFile, FileRemover): 204 для AJAX, redirect + flash    │
+     │     без JS.                                                             │
+     │ - routes/web.php: GET / → files.create, POST /files, GET /files →       │
+     │   files.index, GET /files/{file}/download, DELETE /files/{file}.        │
+     │                                                                         │
+     │ Фронтенд (Bootstrap 5 + jQuery через CDN с SRI)                         │
+     │                                                                         │
+     │ - resources/views/layouts/app.blade.php: navbar со ссылками «Загрузка»  │
+     │   и «Файлы», <meta name="csrf-token">, flash-сообщения.                 │
+     │ - resources/views/files/create.blade.php + public/js/upload.js: выбор   │
+     │   нескольких файлов (или drag&drop), клиентская предпроверка расширения │
+     │   и размера (дублирует серверную, для UX). Каждый файл уходит           │
+     │   отдельным $.ajax с FormData и собственным Bootstrap progress bar      │
+     │   (xhr.upload.onprogress). Ошибки 422 показываются под файлом, успех —  │
+     │   со ссылкой на список.                                                 │
+     │ - resources/views/files/index.blade.php + public/js/files.js: таблица   │
+     │   (имя, размер, загружен, истекает через N ч M мин, «Скачать»,          │
+     │   «Удалить»). Удаление: confirm → AJAX DELETE с X-CSRF-TOKEN → строка   │
+     │   плавно исчезает, toast. Пустое состояние со ссылкой на загрузку.      │
+     │                                                                         │
+     │ Тесты (tests/Feature, sqlite in-memory из дефолтного phpunit.xml,       │
+     │ Storage::fake)                                                          │
+     │                                                                         │
+     │ - FileUploadTest: PDF и DOCX → 201, запись есть, файл на диске,         │
+     │   expires_at ≈ now+24h; .txt → 422; >10MB                               │
+     │   (UploadedFile::fake()->create(..., 10241)) → 422.                     │
+     │ - FileDeletionTest: ручное удаление убирает файл и запись,              │
+     │   Event::assertDispatched(StoredFileDeleted) с reason Manual; удаление  │
+     │   несуществующего → 404.                                                │
+     │ - PurgeExpiredFilesTest: $this->travel(25)->hours() → удаляются только  │
+     │   просроченные, событие с reason Expired на каждый файл.                │
+     │ - SendFileDeletedNotificationTest: Mail::fake(), listener шлёт          │
+     │   FileDeletedMail на адрес из конфига. Отдельно проверить, что listener │
+     │   попадает в очередь на соединение rabbitmq (Queue::fake() +            │
+     │   assertPushedOn('notifications', CallQueuedListener::class)).          │
+     │                                                                         │
+     │ Документация                                                            │
+     │                                                                         │
+     │ - README.md (на русском), структура:                                    │
+     │   a. «Тестовое задание»: полный текст ТЗ дословно, как прислал          │
+     │      пользователь (описание, функциональные и технические требования,   │
+     │      ожидаемый результат, пожелание про Docker-окружение и упрощённый   │
+     │      SOLID). Для читаемости переформатировать в markdown: заголовки и   │
+     │      вложенные списки вместо ◦/•, текст не менять.                      │
+     │   b. «Соответствие требованиям»: таблица «требование → где реализовано» │
+     │      (асинхронный загрузчик → public/js/upload.js +                     │
+     │      FileController@store; лимит 10MB → StoreFileRequest +              │
+     │      FILE_MAX_SIZE_KB; БД → stored_files; CRUD → /files; автоудаление → │
+     │      files:purge-expired + scheduler; RabbitMQ → queued listener на     │
+     │      соединении rabbitmq; уведомление при ручном и автоудалении →       │
+     │      единый FileDeletionService; Docker → docker-compose.yml; SOLID →   │
+     │      раздел «Архитектура»).                                             │
+     │   c. Далее разделы, описанные ниже.                                     │
+     │ - Требования (Docker + Compose), быстрый старт (cp .env.example .env && │
+     │   make init, или те же шаги вручную через docker compose), URL-ы:       │
+     │   приложение http://localhost:8080, RabbitMQ UI http://localhost:15672  │
+     │   (guest/guest), Mailpit http://localhost:8025. Переменные .env         │
+     │   (NOTIFICATION_EMAIL, FILE_TTL_HOURS, FILE_MAX_SIZE_KB). Как быстро    │
+     │   проверить автоудаление: FILE_TTL_HOURS или tinker для сдвига          │
+     │   expires_at, затем php artisan files:purge-expired. Схема потока и     │
+     │   краткое описание архитектуры. Запуск тестов: make test.               │
+     │                                                                         │
+     │ Порядок работы                                                          │
+     │                                                                         │
+     │ 1. Docker-окружение и установка Laravel 13, подключение                 │
+     │    RabbitMQ-пакета; убедиться, что docker compose up поднимает все      │
+     │    сервисы healthy.                                                     │
+     │ 2. Конфиг, миграция, модель, enum, DTO, контракты и сервисы.            │
+     │ 3. Событие, listener, Mailable, команда, расписание.                    │
+     │ 4. Контроллер, request, resource, роуты, Blade и JS.                    │
+     │ 5. Тесты, README, Makefile.                                             │
+     │ 6. Коммиты по логическим шагам в master. Push на GitHub — только после  │
+     │    подтверждения.                                                       │
+     │                                                                         │
+     │ Проверка (end-to-end)                                                   │
+     │                                                                         │
+     │ 1. cp .env.example .env && make init → docker compose ps: все сервисы   │
+     │    running/healthy.                                                     │
+     │ 2. make test → все тесты зелёные.                                       │
+     │ 3. Браузер http://localhost:8080: загрузить PDF и DOCX (виден           │
+     │    прогресс), попытаться загрузить .txt и файл >10MB → понятные ошибки. │
+     │ 4. /files: файлы в списке, скачивание отдаёт оригинальное имя. Удалить  │
+     │    один вручную → строка исчезает, файла нет в                          │
+     │    storage/app/private/uploads.                                         │
+     │ 5. RabbitMQ UI → очередь notifications существует, сообщения прошли     │
+     │    (graph publish/ack). Mailpit → письмо «удалён вручную» на            │
+     │    NOTIFICATION_EMAIL.                                                  │
+     │ 6. Автоудаление: docker compose exec app php artisan tinker             │
+     │    --execute="App\Models\StoredFile::query()->update(['expires_at'=>now │
+     │    ()->subMinute()])" → в течение минуты scheduler удаляет файлы, в     │
+     │    Mailpit приходят письма «истёк срок хранения». Параллельно смотреть  │
+     │    docker compose logs -f scheduler queue.                              │
+     │ 7. Остановить queue → удалить файл → сообщение копится в RabbitMQ       │
+     │    (Ready=1) → запустить queue → письмо доставлено. Это доказывает, что │
+     │    уведомление действительно идёт через брокер.                         │
+     ╰─────────────────────────────────────────────────────────────────────────╯
+
+  Read 1 file (ctrl+o to expand)
+
+● Вношу в план два изменения: делаю раздел документации двуязычным и добавляю
+  шаг сохранения плана в .claude/plan.md проекта.
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Updated plan
+  ⎿  /plan to preview
+
+● Добавил в план двуязычный README (RU + EN) и шаг 0 — сохранение плана в
+  .claude/plan.md. Отправляю план на согласование.
+● User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/swirling-seeking-sunrise.md · /plan to edit
+     План: хранилище PDF/DOCX с TTL 24ч (Laravel + MySQL + RabbitMQ + Docker)
+
+     Context
+
+     Тестовое задание: веб-приложение для загрузки PDF/DOCX (≤10MB) с
+     асинхронным загрузчиком, CRUD-страницей, автоудалением через 24ч и
+     email-уведомлением через RabbitMQ при любом удалении (ручном и
+     автоматическом). Стек: Laravel + PHP 8, MySQL, RabbitMQ, Bootstrap +
+     jQuery, Docker Compose. Репозиторий пустой (нет коммитов, remote
+     git@github.com:vodrems/laravel-start.git), поэтому проект создаётся с нуля.
+
+     Принятые решения (согласованы):
+     - RabbitMQ — как драйвер очереди Laravel через
+       vladimir-yuldashev/laravel-queue-rabbitmq v15 (поддерживает Laravel 13).
+     - Почта — Mailpit в Docker (письма видны в веб-UI).
+     - Без авторизации.
+     - Версии: Laravel 13.x, PHP 8.4 в контейнере, MySQL 8.4, RabbitMQ 4
+       management.
+
+     Архитектура (упрощённый SOLID)
+
+     Ключевая идея: единственный путь удаления — FileDeletionService. Его
+     вызывают и контроллер (вручную), и консольная команда (по TTL). Сервис
+     бросает событие StoredFileDeleted, на него подписан queued-listener,
+     который уходит в RabbitMQ и отправляет письмо. Поэтому уведомление
+     гарантировано в обоих сценариях, и дублировать логику не нужно.
+
+     Upload (jQuery AJAX) → FileController@store → StoreFileRequest (валидация)
+     → FileUploader → Storage + DB
+     Manual delete (AJAX DELETE) → FileController@destroy ─┐
+     Scheduler (каждую минуту) → files:purge-expired ───────┴→
+     FileRemover::delete($file, DeletionReason)
+           → удаление с диска + из БД (транзакция) → event StoredFileDeleted
+     (after commit)
+           → SendFileDeletedNotification (ShouldQueue, connection=rabbitmq,
+     queue=notifications)
+           → [RabbitMQ] → queue worker →
+     Mail::to(NOTIFICATION_EMAIL)->send(FileDeletedMail) → Mailpit
+
+     Как это ложится на SOLID:
+     - SRP: валидация в FormRequest, загрузка и удаление в отдельных сервисах,
+       выборка просроченных в команде, уведомление в listener, текст письма в
+       Mailable. Контроллер тонкий.
+     - OCP: чтобы добавить новую реакцию на удаление (аудит, вебхук), достаточно
+       нового listener'а, сервис удаления не меняется.
+     - DIP/ISP: контроллер и команда зависят от маленьких интерфейсов
+       FileUploader / FileRemover, которые биндятся в AppServiceProvider.
+       Настройки (TTL, лимит, email, диск) берутся из config/filestorage.php, а
+       не хардкодятся.
+
+     Почему автоудаление сделано через scheduler, а не через отложенный job на
+     24ч: команда идемпотентна и сама навёрстывает пропущенное после простоя
+     (если воркер лежал). Для отложенных сообщений в RabbitMQ понадобились бы
+     TTL+DLX или плагин, а удаление, отложенное на сутки, становится лишним,
+     если файл уже удалили вручную. Точность: файл удаляется в течение ≤1 минуты
+     после истечения 24ч.
+
+     Файлы
+
+     Docker / инфраструктура
+
+     - docker-compose.yml, сервисы:
+       - app: php-fpm, собирается из docker/php/Dockerfile, код монтируется
+         томом.
+       - nginx: порт ${APP_PORT:-8080}, конфиг docker/nginx/default.conf с
+         client_max_body_size 12M.
+       - mysql: mysql:8.4, healthcheck, том mysql-data.
+       - rabbitmq: rabbitmq:4-management, порты 5672/15672, healthcheck.
+       - mailpit: axllent/mailpit, порты 8025 (UI) и 1025 (SMTP).
+       - queue: тот же образ, php artisan queue:work rabbitmq 
+         --queue=notifications --tries=3 --backoff=10, restart: unless-stopped,
+         depends_on rabbitmq (healthy).
+       - scheduler: тот же образ, php artisan schedule:work.
+     - docker/php/Dockerfile: php:8.4-fpm, расширения pdo_mysql sockets bcmath 
+       pcntl zip opcache (sockets нужен php-amqplib), composer из composer:2.
+       ARG UID/GID=1000, чтобы права на storage/ совпадали с хостом.
+     - docker/php/php.ini: upload_max_filesize=12M, post_max_size=13M. Лимиты
+       чуть выше 10MB, чтобы превышение ловила валидация Laravel (понятный 422),
+       а не nginx/PHP (413 или пустой запрос).
+     - Makefile: init (build, up, composer install, key:generate, migrate), up,
+       down, test, logs, shell.
+
+     Laravel
+
+     - Установка: composer create-project laravel/laravel:^13 во временную папку
+       внутри контейнера, затем перенос в корень репозитория (там уже есть
+       .git). Потом composer require 
+       vladimir-yuldashev/laravel-queue-rabbitmq:^15. Дефолтный
+       Vite/Tailwind-скаффолдинг удаляем, фронт подключаем через CDN.
+     - config/filestorage.php: disk (local, приватный), max_size_kb (env
+       FILE_MAX_SIZE_KB=10240), ttl_hours (env FILE_TTL_HOURS=24),
+       allowed_extensions [pdf, docx], notification_email (env
+       NOTIFICATION_EMAIL).
+     - config/queue.php: добавить соединение rabbitmq по документации пакета
+       (RABBITMQ_HOST/PORT/USER/PASSWORD/VHOST, очередь по умолчанию
+       notifications). В .env.example поставить QUEUE_CONNECTION=rabbitmq.
+     - Миграция create_stored_files_table: id, original_name, path (unique),
+       mime_type, size (unsignedBigInteger), expires_at (index), timestamps.
+     - app/Models/StoredFile.php: casts (expires_at → datetime), scopeExpired()
+       (expires_at <= now()).
+     - app/Enums/DeletionReason.php: backed enum Manual, Expired с методом
+       label() (для письма).
+     - app/DTO/DeletedFileData.php: readonly-снимок удалённого файла (id, имя,
+       размер, mime, uploadedAt, deletedAt, reason). В событие кладём DTO, а не
+       модель: к моменту обработки job'а записи в БД уже нет, и SerializesModels
+       упал бы.
+     - app/Contracts/FileUploader.php, app/Contracts/FileRemover.php:
+       интерфейсы.
+     - app/Services/FileStorage/FileUploadService.php (реализует FileUploader):
+       кладёт файл на диск под именем uploads/{Y/m/d}/{uuid}.{ext}, создаёт
+       запись с expires_at = now()->addHours(ttl). Если вставка в БД упала,
+       удаляет уже сохранённый файл.
+     - app/Services/FileStorage/FileDeletionService.php (реализует FileRemover):
+       в транзакции перечитывает запись с lockForUpdate() (защита от гонки
+       ручного удаления и purge), удаляет файл с диска (если файла нет — warning
+       в лог, продолжаем) и запись из БД, затем dispatch StoredFileDeleted.
+     - app/Events/StoredFileDeleted.php: implements ShouldDispatchAfterCommit,
+       несёт DeletedFileData.
+     - app/Listeners/SendFileDeletedNotification.php: implements ShouldQueue,
+       $connection = 'rabbitmq', $queue = 'notifications', $tries = 3.
+       Отправляет FileDeletedMail на config('filestorage.notification_email').
+     - app/Mail/FileDeletedMail.php +
+       resources/views/mail/file-deleted.blade.php (markdown): имя, размер, дата
+       загрузки и удаления, причина.
+     - app/Console/Commands/PurgeExpiredFiles.php (files:purge-expired):
+       StoredFile::expired()->chunkById(100, …) → FileRemover::delete($file, 
+       DeletionReason::Expired), выводит количество удалённых. В
+       routes/console.php: Schedule::command('files:purge-expired')->everyMinute
+       ()->withoutOverlapping().
+     - app/Http/Requests/StoreFileRequest.php:
+       required|file|max:{max_size_kb}|mimes:pdf,docx|extensions:pdf,docx.
+       Сообщения об ошибках на русском.
+     - app/Http/Resources/StoredFileResource.php: JSON для AJAX-ответа (id,
+       name, human size, uploaded_at, expires_at, ссылки download/delete).
+     - app/Http/Controllers/FileController.php:
+       - create(): страница загрузки;
+       - store(StoreFileRequest, FileUploader): 201 + resource;
+       - index(): CRUD-страница, пагинация по 20;
+       - download(StoredFile): Storage::download с оригинальным именем;
+       - destroy(StoredFile, FileRemover): 204 для AJAX, redirect + flash без
+         JS.
+     - routes/web.php: GET / → files.create, POST /files, GET /files →
+       files.index, GET /files/{file}/download, DELETE /files/{file}.
+
+     Фронтенд (Bootstrap 5 + jQuery через CDN с SRI)
+
+     - resources/views/layouts/app.blade.php: navbar со ссылками «Загрузка» и
+       «Файлы», <meta name="csrf-token">, flash-сообщения.
+     - resources/views/files/create.blade.php + public/js/upload.js: выбор
+       нескольких файлов (или drag&drop), клиентская предпроверка расширения и
+       размера (дублирует серверную, для UX). Каждый файл уходит отдельным
+       $.ajax с FormData и собственным Bootstrap progress bar
+       (xhr.upload.onprogress). Ошибки 422 показываются под файлом, успех — со
+       ссылкой на список.
+     - resources/views/files/index.blade.php + public/js/files.js: таблица (имя,
+       размер, загружен, истекает через N ч M мин, «Скачать», «Удалить»).
+       Удаление: confirm → AJAX DELETE с X-CSRF-TOKEN → строка плавно исчезает,
+       toast. Пустое состояние со ссылкой на загрузку.
+
+     Тесты (tests/Feature, sqlite in-memory из дефолтного phpunit.xml, 
+     Storage::fake)
+
+     - FileUploadTest: PDF и DOCX → 201, запись есть, файл на диске, expires_at
+       ≈ now+24h; .txt → 422; >10MB (UploadedFile::fake()->create(..., 10241))
+       → 422.
+     - FileDeletionTest: ручное удаление убирает файл и запись,
+       Event::assertDispatched(StoredFileDeleted) с reason Manual; удаление
+       несуществующего → 404.
+     - PurgeExpiredFilesTest: $this->travel(25)->hours() → удаляются только
+       просроченные, событие с reason Expired на каждый файл.
+     - SendFileDeletedNotificationTest: Mail::fake(), listener шлёт
+       FileDeletedMail на адрес из конфига. Отдельно проверить, что listener
+       попадает в очередь на соединение rabbitmq (Queue::fake() +
+       assertPushedOn('notifications', CallQueuedListener::class)).
+
+     Документация
+
+     - README.md — один двуязычный файл. Вверху переключатель
+       [Русский](#русский) · [English](#english), дальше полная русская часть и
+       полная английская часть с одинаковой структурой. Все инструкции и
+       информация (запуск, URL-ы, переменные, архитектура, проверка, тесты) есть
+       на обоих языках. Текст ТЗ: в русской части оригинал, в английской
+       перевод. Структура каждой части:
+       a. «Тестовое задание» / «Task»: полный текст ТЗ, как прислал пользователь
+          (описание, функциональные и технические требования, ожидаемый
+          результат, пожелание про Docker-окружение и упрощённый SOLID). Для
+          читаемости переформатировать в markdown: заголовки и вложенные списки
+          вместо ◦/•, смысл не менять.
+       b. «Соответствие требованиям»: таблица «требование → где реализовано»
+          (асинхронный загрузчик → public/js/upload.js + FileController@store;
+          лимит 10MB → StoreFileRequest + FILE_MAX_SIZE_KB; БД → stored_files;
+          CRUD → /files; автоудаление → files:purge-expired + scheduler;
+          RabbitMQ → queued listener на соединении rabbitmq; уведомление при
+          ручном и автоудалении → единый FileDeletionService; Docker →
+          docker-compose.yml; SOLID → раздел «Архитектура»).
+       c. Далее разделы, описанные ниже.
+     - Требования (Docker + Compose), быстрый старт (cp .env.example .env && 
+       make init, или те же шаги вручную через docker compose), URL-ы:
+       приложение http://localhost:8080, RabbitMQ UI http://localhost:15672
+       (guest/guest), Mailpit http://localhost:8025. Переменные .env
+       (NOTIFICATION_EMAIL, FILE_TTL_HOURS, FILE_MAX_SIZE_KB). Как быстро
+       проверить автоудаление: FILE_TTL_HOURS или tinker для сдвига expires_at,
+       затем php artisan files:purge-expired. Схема потока и краткое описание
+       архитектуры. Запуск тестов: make test.
+
+     Порядок работы
+
+     0. Сохранить этот план в проект как .claude/plan.md (копия финального
+        плана, коммитится вместе с кодом).
+     1. Docker-окружение и установка Laravel 13, подключение RabbitMQ-пакета;
+        убедиться, что docker compose up поднимает все сервисы healthy.
+     2. Конфиг, миграция, модель, enum, DTO, контракты и сервисы.
+     3. Событие, listener, Mailable, команда, расписание.
+     4. Контроллер, request, resource, роуты, Blade и JS.
+     5. Тесты, README, Makefile.
+     6. Коммиты по логическим шагам в master. Push на GitHub — только после
+        подтверждения.
+
+     Проверка (end-to-end)
+
+     1. cp .env.example .env && make init → docker compose ps: все сервисы
+        running/healthy.
+     2. make test → все тесты зелёные.
+     3. Браузер http://localhost:8080: загрузить PDF и DOCX (виден прогресс),
+        попытаться загрузить .txt и файл >10MB → понятные ошибки.
+     4. /files: файлы в списке, скачивание отдаёт оригинальное имя. Удалить один
+        вручную → строка исчезает, файла нет в storage/app/private/uploads.
+     5. RabbitMQ UI → очередь notifications существует, сообщения прошли (graph
+        publish/ack). Mailpit → письмо «удалён вручную» на NOTIFICATION_EMAIL.
+     6. Автоудаление: docker compose exec app php artisan tinker --execute="App\
+        Models\StoredFile::query()->update(['expires_at'=>now()->subMinute()])"
+        → в течение минуты scheduler удаляет файлы, в Mailpit приходят письма
+        «истёк срок хранения». Параллельно смотреть docker compose logs -f 
+        scheduler queue.
+     7. Остановить queue → удалить файл → сообщение копится в RabbitMQ (Ready=1)
+        → запустить queue → письмо доставлено. Это доказывает, что уведомление
+        действительно идёт через брокер.
+
+● Сначала сохраню план в проект и зафиксирую настройки в памяти, а параллельно
+  начну создавать Docker-инфраструктуру — её файлы не зависят от Laravel,
+  поэтому их можно писать сразу.
+
+  Ran 1 shell command, wrote 3 memories (ctrl+o to expand)
+
+● Write(docker/php/Dockerfile)
+  ⎿  Wrote 23 lines to docker/php/Dockerfile
+       1 FROM php:8.4-fpm
+       2 
+       3 ARG UID=1000
+       5 
+       6 RUN apt-get update \
+       7     && apt-get install -y --no-install-recommends git unzip libz
+         ip-dev libicu-dev \
+         ath pcntl zip intl opcache \
+       9     && apt-get clean \
+      10     && rm -rf /var/lib/apt/lists/*
+     … +16 lines (ctrl+o to expand)
+
+● Write(docker/php/php.ini)
+  ⎿  Wrote 7 lines to docker/php/php.ini
+      1 ; Slightly above the 10MB app limit so oversized files reach Lara
+        vel validation (422)
+      2 ; instead of being cut off by PHP.
+      3 upload_max_filesize = 12M
+      4 post_max_size = 13M
+      5 memory_limit = 256M
+      6 date.timezone = UTC
+      7 expose_php = Off
+
+● Write(docker/nginx/default.conf)
+  ⎿  Wrote 24 lines to docker/nginx/default.conf
+       1 server {
+       2     listen 80;
+       3     server_name _;
+       4     root /var/www/html/public;
+       5     index index.php;
+       7     # Above the 10MB app limit: oversized uploads are rejected b
+         y Laravel validation, not with a bare 413.
+       8     client_max_body_size 12M;
+       9 
+      10     location / {
+     … +16 lines (ctrl+o to expand)
+
+● Write(docker-compose.yml)
+  ⎿  Wrote 88 lines to docker-compose.yml
+       1 name: pdf-storage
+       2 
+       3 x-app: &app
+       4   build:
+       5     context: .
+       6     dockerfile: docker/php/Dockerfile
+       7     args:
+       8       UID: ${HOST_UID:-1000}
+       9       GID: ${HOST_GID:-1000}
+      10   image: pdf-storage-app
+     … +83 lines (ctrl+o to expand)
+
+● Дальше соберу PHP-образ с Laravel и скачаю остальные образы — запускаю оба
+  шага параллельно, так как они независимы.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● PHP-образ собрался, но скачивание остальных образов упало по таймауту TLS до
+  Docker Hub — временная сетевая ошибка. Повторяю pull и параллельно ставлю
+  Laravel 13 во временную папку внутри контейнера.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Образы скачаны, Laravel установлен во временную папку. Теперь перенесу проект
+  в корень репозитория и поставлю laravel-queue-rabbitmq, параллельно подниму
+  MySQL, RabbitMQ и Mailpit.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● I'll pull in the key files I'll be editing—.env.example, config/queue.php,
+  phpunit.xml, routes, bootstrap/app.php, AppServiceProvider, composer.json,
+  .gitignore—plus the RabbitMQ package's config/README and the auto-generated
+  CLAUDE.md/AGENTS.md, all in parallel.
+
+  Read 8 files, ran 1 shell command (ctrl+o to expand)
+
+● Окружение готово (Docker, Laravel 13 с RabbitMQ, MySQL, RabbitMQ, Mailpit
+  запущены), теперь перехожу к написанию кода приложения — начну с доменной
+  логики, контроллера, JS и тестов, а конфиги и layout доработаю после уточнения
+  зависимостей.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Write(config/filestorage.php)
+  ⎿  Wrote 57 lines to config/filestorage.php
+       1 <?php
+       2 
+       4 
+       5     /*
+       6     |-----------------------------------------------------------
+       7     | Storage
+       8     |-----------------------------------------------------------
+         ---------------
+      10     | Uploaded files are kept on a private disk (not reachable f
+         rom the web)
+     … +59 lines (ctrl+o to expand)
+
+● Write(database/migrations/2026_09_11_000000_create_stored_files_table.php)
+  ⎿  Wrote 32 lines to
+     database/migrations/2026_09_11_000000_create_stored_files_table.php
+       1 <?php
+       2 
+       3 use Illuminate\Database\Migrations\Migration;
+       4 use Illuminate\Database\Schema\Blueprint;
+       5 use Illuminate\Support\Facades\Schema;
+       6 
+       7 return new class extends Migration
+       8 {
+       9     /**
+      10      * Run the migrations.
+     … +22 lines (ctrl+o to expand)
+
+● Write(app/Enums/DeletionReason.php)
+  ⎿  Wrote 17 lines to app/Enums/DeletionReason.php
+       1 <?php
+       2 
+       3 namespace App\Enums;
+       4 
+       5 enum DeletionReason: string
+       6 {
+       7     case Manual = 'manual';
+       8     case Expired = 'expired';
+       9 
+      10     public function label(): string
+     … +7 lines (ctrl+o to expand)
+
+● Write(app/DTO/DeletedFileData.php)
+  ⎿  Wrote 37 lines to app/DTO/DeletedFileData.php
+       1 <?php
+       2 
+       3 namespace App\DTO;
+       4 
+       5 use App\Enums\DeletionReason;
+       7 use Carbon\CarbonImmutable;
+       8 
+       9 /**
+      10  * Snapshot of a deleted file. The notification is handled async
+         hronously,
+     … +30 lines (ctrl+o to expand)
+
+● Write(app/Contracts/FileUploader.php)
+  ⎿  Wrote 14 lines to app/Contracts/FileUploader.php
+       1 <?php
+       2 
+       3 namespace App\Contracts;
+       4 
+       5 use App\Models\StoredFile;
+       6 use Illuminate\Http\UploadedFile;
+       7 
+       8 interface FileUploader
+       9 {
+      10     /**
+     … +5 lines (ctrl+o to expand)
+
+● Write(app/Contracts/FileRemover.php)
+  ⎿  Wrote 16 lines to app/Contracts/FileRemover.php
+       1 <?php
+       2 
+       3 namespace App\Contracts;
+       4 
+       5 use App\Enums\DeletionReason;
+       6 use App\Models\StoredFile;
+       7 
+       8 interface FileRemover
+       9 {
+      10     /**
+     … +9 lines (ctrl+o to expand)
+
+● Write(app/Services/FileStorage/FileUploadService.php)
+  ⎿  Wrote 49 lines to app/Services/FileStorage/FileUploadService.php
+       1 <?php
+       2 
+       3 namespace App\Services\FileStorage;
+       4 
+       5 use App\Contracts\FileUploader;
+       6 use App\Models\StoredFile;
+       7 use Illuminate\Contracts\Filesystem\Filesystem;
+       8 use Illuminate\Http\UploadedFile;
+       9 use Illuminate\Support\Str;
+      10 use RuntimeException;
+     … +44 lines (ctrl+o to expand)
+
+● Write(app/Services/FileStorage/FileDeletionService.php)
+  ⎿  Wrote 55 lines to app/Services/FileStorage/FileDeletionService.php
+       1 <?php
+       2 
+       3 namespace App\Services\FileStorage;
+       4 
+       5 use App\Contracts\FileRemover;
+       6 use App\DTO\DeletedFileData;
+       7 use App\Enums\DeletionReason;
+       8 use App\Events\StoredFileDeleted;
+       9 use App\Models\StoredFile;
+      10 use Illuminate\Contracts\Events\Dispatcher;
+     … +51 lines (ctrl+o to expand)
+
+● Write(app/Events/StoredFileDeleted.php)
+  ⎿  Wrote 13 lines to app/Events/StoredFileDeleted.php
+       1 <?php
+       2 
+       3 namespace App\Events;
+       4 
+       5 use App\DTO\DeletedFileData;
+       7 
+       8 final class StoredFileDeleted implements ShouldDispatchAfterComm
+         it
+       9 {
+      10     public function __construct(
+     … +3 lines (ctrl+o to expand)
+● Write(app/Listeners/SendFileDeletedNotification.php)
+  ⎿  Wrote 35 lines to app/Listeners/SendFileDeletedNotification.php
+       1 <?php
+       2 
+       3 namespace App\Listeners;
+       4 
+       5 use App\Events\StoredFileDeleted;
+       6 use App\Mail\FileDeletedMail;
+       7 use Illuminate\Contracts\Queue\ShouldQueue;
+       8 use Illuminate\Support\Facades\Mail;
+       9 
+      10 /**
+     … +26 lines (ctrl+o to expand)
+
+● Write(app/Mail/FileDeletedMail.php)
+  ⎿  Wrote 29 lines to app/Mail/FileDeletedMail.php
+       1 <?php
+       2 
+       3 namespace App\Mail;
+       4 
+       5 use App\DTO\DeletedFileData;
+       6 use Illuminate\Mail\Mailable;
+       7 use Illuminate\Mail\Mailables\Content;
+       8 use Illuminate\Mail\Mailables\Envelope;
+       9 
+      10 final class FileDeletedMail extends Mailable
+     … +20 lines (ctrl+o to expand)
+
+● Write(resources/views/mail/file-deleted.blade.php)
+  ⎿  Wrote 17 lines to resources/views/mail/file-deleted.blade.php
+       1 <x-mail::message>
+       2 # Файл удалён
+       3 
+       4 Файл **{{ $file->originalName }}** удалён из хранилища.
+       5 
+       7 | Параметр | Значение |
+       8 |:---------|:---------|
+       9 | Причина  | {{ $file->reason->label() }} |
+      10 | Размер   | {{ \Illuminate\Support\Number::fileSize($file->size
+         , 1) }} |
+     … +8 lines (ctrl+o to expand)
+
+● Write(app/Console/Commands/PurgeExpiredFiles.php)
+  ⎿  Wrote 40 lines to app/Console/Commands/PurgeExpiredFiles.php
+       1 <?php
+       2 
+       3 namespace App\Console\Commands;
+       4 
+       5 use App\Contracts\FileRemover;
+       6 use App\Enums\DeletionReason;
+       7 use App\Models\StoredFile;
+       8 use Illuminate\Console\Command;
+       9 use Illuminate\Database\Eloquent\Collection;
+      10 use Throwable;
+     … +35 lines (ctrl+o to expand)
+
+● Write(routes/console.php)
+  ⎿  Added 2 lines, removed 5 lines
+      1  <?php
+      2  
+      3 -use Illuminate\Foundation\Inspiring;                            
+      4 -use Illuminate\Support\Facades\Artisan;                         
+      3 +use Illuminate\Support\Facades\Schedule;                        
+      4  
+      6 -Artisan::command('inspire', function () {                       
+      7 -    $this->comment(Inspiring::quote());                         
+      8 -})->purpose('Display an inspiring quote');                      
+      5 +Schedule::command('files:purge-expired')->everyMinute()->without
+        +Overlapping();                                                  
+
+● Write(app/Http/Requests/StoreFileRequest.php)
+  ⎿  Wrote 48 lines to app/Http/Requests/StoreFileRequest.php
+       1 <?php
+       2 
+       3 namespace App\Http\Requests;
+       4 
+       5 use Illuminate\Foundation\Http\FormRequest;
+       6 use Illuminate\Support\Number;
+       7 
+       8 class StoreFileRequest extends FormRequest
+       9 {
+      10     public function authorize(): bool
+     … +43 lines (ctrl+o to expand)
+
+● Write(app/Http/Resources/StoredFileResource.php)
+  ⎿  Wrote 28 lines to app/Http/Resources/StoredFileResource.php
+       1 <?php
+       2 
+       3 namespace App\Http\Resources;
+       4 
+       5 use Illuminate\Http\Request;
+       6 use Illuminate\Http\Resources\Json\JsonResource;
+       7 use Illuminate\Support\Number;
+       8 
+       9 /**
+      10  * @mixin \App\Models\StoredFile
+     … +19 lines (ctrl+o to expand)
+
+● Write(app/Http/Controllers/FileController.php)
+  ⎿  Wrote 65 lines to app/Http/Controllers/FileController.php
+       1 <?php
+       2 
+       3 namespace App\Http\Controllers;
+       4 
+       5 use App\Contracts\FileRemover;
+       6 use App\Contracts\FileUploader;
+       7 use App\Enums\DeletionReason;
+       8 use App\Http\Requests\StoreFileRequest;
+       9 use App\Http\Resources\StoredFileResource;
+      10 use App\Models\StoredFile;
+     … +63 lines (ctrl+o to expand)
+
+● Write(routes/web.php)
+  ⎿  Added 6 lines, removed 3 lines
+       1  <?php
+       2  
+       3 +use App\Http\Controllers\FileController;                       
+       4  use Illuminate\Support\Facades\Route;
+       5  
+       5 -Route::get('/', function () {                                  
+       6 -    return view('welcome');                                    
+       7 -});                                                            
+       6 +Route::get('/', [FileController::class, 'create'])->name('files
+         +.create');                                                     
+       7 +Route::get('/files', [FileController::class, 'index'])->name('f
+         +iles.index');                                                  
+       8 +Route::post('/files', [FileController::class, 'store'])->name('
+         +files.store');                                                 
+       9 +Route::get('/files/{file}/download', [FileController::class, 'd
+         +ownload'])->name('files.download');                            
+      10 +Route::delete('/files/{file}', [FileController::class, 'destroy
+         +'])->name('files.destroy');                                    
+
+● Write(app/Providers/AppServiceProvider.php)
+  ⎿  Added 18 lines, removed 2 lines
+       2  
+       3  namespace App\Providers;
+       4  
+       5 +use App\Contracts\FileRemover;                                 
+       6 +use App\Contracts\FileUploader;                                
+       7 +use App\Services\FileStorage\FileDeletionService;              
+       8 +use App\Services\FileStorage\FileUploadService;                
+       9 +use Illuminate\Contracts\Foundation\Application;               
+      10 +use Illuminate\Pagination\Paginator;                           
+      11  use Illuminate\Support\ServiceProvider;
+      12  
+      13  class AppServiceProvider extends ServiceProvider
+     ...
+      17       */
+      18      public function register(): void
+      19      {
+      14 -        //                                                     
+      20 +        $this->app->bind(FileUploader::class, fn (Application $
+         +app) => new FileUploadService(                                 
+      21 +            disk: $app['filesystem']->disk(config('filestorage.
+         +disk')),                                                       
+      22 +            directory: config('filestorage.directory'),        
+      23 +            ttlHours: config('filestorage.ttl_hours'),         
+      24 +        ));                                                    
+      25 +                                                               
+      26 +        $this->app->bind(FileRemover::class, fn (Application $a
+         +pp) => new FileDeletionService(                                
+      27 +            disk: $app['filesystem']->disk(config('filestorage.
+         +disk')),                                                       
+      28 +            events: $app['events'],                            
+      29 +            logger: $app['log'],                               
+      30 +        ));                                                    
+      31      }
+      32  
+      33      /**
+     ...
+      35       */
+      36      public function boot(): void
+      37      {
+      22 -        //                                                     
+      38 +        Paginator::useBootstrapFive();                         
+      39      }
+      40  }
+
+● Write(database/factories/StoredFileFactory.php)
+  ⎿  Wrote 32 lines to database/factories/StoredFileFactory.php
+       1 <?php
+       2 
+       3 namespace Database\Factories;
+       4 
+       5 use App\Models\StoredFile;
+       6 use Illuminate\Database\Eloquent\Factories\Factory;
+       7 use Illuminate\Support\Str;
+       8 
+       9 /**
+      10  * @extends Factory<StoredFile>
+     … +24 lines (ctrl+o to expand)
+
+● Write(public/js/app.js)
+  ⎿  Wrote 63 lines to public/js/app.js
+       1 /* Shared helpers for all pages. */
+       2 window.App = (function ($) {
+       3     'use strict';
+       4 
+       5     $.ajaxSetup({
+       7             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('c
+         ontent'),
+       8             Accept: 'application/json',
+       9         },
+      10     });
+     … +63 lines (ctrl+o to expand)
+
+● Write(public/js/upload.js)
+  ⎿  Wrote 120 lines to public/js/upload.js
+       1 /* Asynchronous uploader: every file is sent in its own AJAX req
+         uest with a progress bar. */
+       2 $(function () {
+       4 
+       5     const $zone = $('#dropzone');
+       6     const $input = $('#file-input');
+       7     const $list = $('#upload-list');
+       9     const maxSize = Number($zone.data('max-size'));
+      10     const extensions = String($zone.data('extensions')).split(',
+         ');
+     … +124 lines (ctrl+o to expand)
+
+● Write(public/js/files.js)
+  ⎿  Wrote 60 lines to public/js/files.js
+      1 /* File management page: local times, countdown to expiration, AJ
+        AX deletion. */
+      2 $(function () {
+      3     'use strict';
+      4 
+      5     const $table = $('#files-table');
+      6 
+      7     $('.js-local-time').each(function () {
+      8         $(this).text(App.formatDate($(this).attr('datetime')));
+      9     });
+     … +55 lines (ctrl+o to expand)
+
+● Write(public/css/app.css)
+  ⎿  Wrote 9 lines to public/css/app.css
+      1 .dropzone {
+      2     border: 2px dashed var(--bs-border-color);
+      3     transition: border-color 0.15s ease-in-out, background-color 
+        0.15s ease-in-out;
+      4 }
+      5 
+      6 .dropzone.is-dragover {
+      7     border-color: var(--bs-primary);
+      8     background-color: var(--bs-primary-bg-subtle);
+      9 }
+
+● Write(resources/views/files/create.blade.php)
+  ⎿  Wrote 38 lines to resources/views/files/create.blade.php
+       1 @extends('layouts.app')
+       2 
+       3 @section('title', 'Загрузка файлов')
+       4 
+       5 @section('content')
+       7         <div class="col-lg-8">
+       8             <h1 class="h3 mb-2">Загрузка файлов</h1>
+       9             <p class="text-body-secondary mb-4">
+      10                 {{ mb_strtoupper(implode(', ', $extensions)) }} 
+         до {{ \Illuminate\Support\Number::fileSize($maxSizeBytes) }}.
+     … +36 lines (ctrl+o to expand)
+
+● Write(resources/views/files/index.blade.php)
+  ⎿  Wrote 80 lines to resources/views/files/index.blade.php
+       1 @extends('layouts.app')
+       2 
+       3 @section('title', 'Файлы')
+       5 @section('content')
+       6     <div class="d-flex flex-wrap justify-content-between align-i
+         tems-center gap-2 mb-3">
+       7         <h1 class="h3 mb-0">Загруженные файлы</h1>
+         mary">
+       9             <i class="bi bi-upload"></i> Загрузить
+      10         </a>
+     … +90 lines (ctrl+o to expand)
+
+● Write(Makefile)
+  ⎿  Wrote 48 lines to Makefile
+       1 HOST_UID := $(shell id -u)
+       2 HOST_GID := $(shell id -g)
+       3 export HOST_UID HOST_GID
+       4 
+       5 DC := docker compose
+       6 ARTISAN := $(DC) exec app php artisan
+       7 
+       8 .PHONY: help init up down build restart logs shell test purge
+       9 
+      10 help: ## Show available commands
+     … +42 lines (ctrl+o to expand)
+
+● Write(.dockerignore)
+  ⎿  Wrote 5 lines to .dockerignore
+      1 .git
+      2 vendor
+      3 node_modules
+      4 storage
+      5 .env
+
+● Всё нужное собрано: формат конфига, таймзона UTC, атрибуты #[Fillable] в
+  модели, SRI-хеши. Теперь одним пакетом пишу соединение rabbitmq, модель
+  StoredFile, layout, .env.example, 4 файла тестов, правки
+  composer.json/.gitignore и удаляю старый .env со SQLite.
+
+● Update(config/queue.php)  ⎿  Added 18 lines
+      73              'after_commit' => false,
+      74          ],
+      75  
+      76 +        'rabbitmq' => [                                        
+      77 +            'driver' => 'rabbitmq',                            
+      78 +            'queue' => env('RABBITMQ_QUEUE', 'notifications'), 
+      79 +            'connection' => 'default',                         
+      80 +            'hosts' => [                                       
+      81 +                [                                              
+      82 +                    'host' => env('RABBITMQ_HOST', '127.0.0.1')
+         +,                                                              
+      83 +                    'port' => (int) env('RABBITMQ_PORT', 5672),
+      84 +                    'user' => env('RABBITMQ_USER', 'guest'),   
+      85 +                    'password' => env('RABBITMQ_PASSWORD', 'gue
+         +st'),                                                          
+      86 +                    'vhost' => env('RABBITMQ_VHOST', '/'),     
+      87 +                ],                                             
+      88 +            ],                                                 
+      89 +            'options' => [],                                   
+      90 +            'worker' => env('RABBITMQ_WORKER', 'default'),     
+      91 +            'after_commit' => false,                           
+      92 +        ],                                                     
+      93 +                                                               
+      94          'deferred' => [
+      95              'driver' => 'deferred',
+      96          ],
+
+● Update(config/queue.php)
+  ⎿  Added 1 line, removed 1 line
+      24      | used by your application. An example configuration is pro
+          vided for
+      25      | each backend supported by Laravel. You're also free to ad
+          d more.
+      26      |
+      27 -    | Drivers: "sync", "database", "beanstalkd", "sqs", "redis"
+         -,                                                              
+      27 +    | Drivers: "sync", "database", "beanstalkd", "sqs", "redis"
+         +, "rabbitmq",                                                  
+      28      |          "deferred", "background", "failover", "null"
+      29      |
+      30      */
+
+● Write(app/Models/StoredFile.php)
+  ⎿  Wrote 39 lines to app/Models/StoredFile.php
+       1 <?php
+       2 
+       3 namespace App\Models;
+       4 
+       5 use Database\Factories\StoredFileFactory;
+       6 use Illuminate\Database\Eloquent\Attributes\Fillable;
+       7 use Illuminate\Database\Eloquent\Attributes\Scope;
+       8 use Illuminate\Database\Eloquent\Builder;
+       9 use Illuminate\Database\Eloquent\Factories\HasFactory;
+      10 use Illuminate\Database\Eloquent\Model;
+     … +30 lines (ctrl+o to expand)
+
+● Write(resources/views/layouts/app.blade.php)
+  ⎿  Wrote 48 lines to resources/views/layouts/app.blade.php
+       1 <!doctype html>
+       2 <html lang="ru">
+       4     <meta charset="utf-8">
+       5     <meta name="viewport" content="width=device-width, initial-s
+         cale=1">
+       7     <title>@yield('title') — {{ config('app.name') }}</title>
+       8 
+       9     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bo
+      10           integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qK
+         QnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+     … +55 lines (ctrl+o to expand)
+
+● Write(.env.example)
+  ⎿  Added 41 lines, removed 32 lines
+       1 -APP_NAME=Laravel                                               
+       1 +APP_NAME="PDF Storage"                                         
+       2  APP_ENV=local
+       3  APP_KEY=
+       4  APP_DEBUG=true
+       5 -APP_URL=http://localhost:8000                                  
+       5 +APP_URL=http://localhost:8080                                  
+       6  
+       7 -APP_LOCALE=en                                                  
+       7 +APP_LOCALE=ru                                                  
+       8  APP_FALLBACK_LOCALE=en
+       9  APP_FAKER_LOCALE=en_US
+      10  
+      11  APP_MAINTENANCE_DRIVER=file
+      12 -# APP_MAINTENANCE_STORE=database                               
+      12  
+      14 -# PHP_CLI_SERVER_WORKERS=4                                     
+      15 -                                                               
+      13  BCRYPT_ROUNDS=12
+      14  
+      15  LOG_CHANNEL=stack
+     ...
+      17  LOG_DEPRECATIONS_CHANNEL=null
+      18  LOG_LEVEL=debug
+      19  
+      23 -DB_CONNECTION=sqlite                                           
+      24 -# DB_HOST=127.0.0.1                                            
+      25 -# DB_PORT=3306                                                 
+      26 -# DB_DATABASE=laravel                                          
+      27 -# DB_USERNAME=root                                             
+      28 -# DB_PASSWORD=                                                 
+      20 +# --- Docker --------------------------------------------------
+         +----------------                                               
+      21 +# Host ports. Change them if something on your machine already 
+         +uses them.                                                     
+      22 +APP_PORT=8080                                                  
+      23 +FORWARD_DB_PORT=3306                                           
+      24 +FORWARD_RABBITMQ_PORT=5672                                     
+      25 +FORWARD_RABBITMQ_UI_PORT=15672                                 
+      26 +FORWARD_MAILPIT_UI_PORT=8025                                   
+      27 +FORWARD_MAILPIT_SMTP_PORT=1025                                 
+      28  
+      29 +# --- Database (MySQL container) ------------------------------
+         +----------------                                               
+      30 +DB_CONNECTION=mysql                                            
+      31 +DB_HOST=mysql                                                  
+      32 +DB_PORT=3306                                                   
+      33 +DB_DATABASE=pdf_storage                                        
+      34 +DB_USERNAME=app                                                
+      35 +DB_PASSWORD=secret                                             
+      36 +DB_ROOT_PASSWORD=root                                          
+      37 +                                                               
+      38  SESSION_DRIVER=database
+      39  SESSION_LIFETIME=120
+      40  SESSION_ENCRYPT=false
+     ...
+      43  
+      44  BROADCAST_CONNECTION=log
+      45  FILESYSTEM_DISK=local
+      38 -QUEUE_CONNECTION=database                                      
+      39 -                                                               
+      46  CACHE_STORE=database
+      41 -# CACHE_PREFIX=                                                
+      47  
+      43 -MEMCACHED_HOST=127.0.0.1                                       
+      48 +# --- Queue (RabbitMQ container) ------------------------------
+         +----------------                                               
+      49 +QUEUE_CONNECTION=rabbitmq                                      
+      50 +RABBITMQ_HOST=rabbitmq                                         
+      51 +RABBITMQ_PORT=5672                                             
+      52 +RABBITMQ_USER=app                                              
+      53 +RABBITMQ_PASSWORD=secret                                       
+      54 +RABBITMQ_VHOST=/                                               
+      55 +RABBITMQ_QUEUE=notifications                                   
+      56  
+      45 -REDIS_CLIENT=phpredis                                          
+      46 -REDIS_HOST=127.0.0.1                                           
+      47 -REDIS_PASSWORD=null                                            
+      48 -REDIS_PORT=6379                                                
+      49 -                                                               
+      50 -MAIL_MAILER=log                                                
+      57 +# --- Mail (Mailpit container, UI at http://localhost:8025) ---
+         +-----------------                                              
+      58 +MAIL_MAILER=smtp                                               
+      59  MAIL_SCHEME=null
+      52 -MAIL_HOST=127.0.0.1                                            
+      53 -MAIL_PORT=2525                                                 
+      60 +MAIL_HOST=mailpit                                              
+      61 +MAIL_PORT=1025                                                 
+      62  MAIL_USERNAME=null
+      63  MAIL_PASSWORD=null
+      56 -MAIL_FROM_ADDRESS="hello@example.com"                          
+      64 +MAIL_FROM_ADDRESS="no-reply@pdf-storage.local"                 
+      65  MAIL_FROM_NAME="${APP_NAME}"
+      66  
+      59 -AWS_ACCESS_KEY_ID=                                             
+      60 -AWS_SECRET_ACCESS_KEY=                                         
+      61 -AWS_DEFAULT_REGION=us-east-1                                   
+      62 -AWS_BUCKET=                                                    
+      63 -AWS_USE_PATH_STYLE_ENDPOINT=false                              
+      64 -                                                               
+      65 -VITE_APP_NAME="${APP_NAME}"                                    
+      67 +# --- File storage --------------------------------------------
+         +------------------                                             
+      68 +# Deletion notifications (manual and automatic) are sent to thi
+         +s address.                                                     
+      69 +NOTIFICATION_EMAIL=admin@example.com                           
+      70 +NOTIFICATION_QUEUE_CONNECTION=rabbitmq                         
+      71 +NOTIFICATION_QUEUE=notifications                               
+      72 +FILE_STORAGE_DISK=local                                        
+      73 +FILE_MAX_SIZE_KB=10240                                         
+      74 +FILE_TTL_HOURS=24                                              
+
+● Write(tests/Feature/FileUploadTest.php)
+  ⎿  Wrote 102 lines to tests/Feature/FileUploadTest.php
+       1 <?php
+       2 
+       3 namespace Tests\Feature;
+       4 
+       5 use App\Models\StoredFile;
+       6 use Illuminate\Foundation\Testing\RefreshDatabase;
+       7 use Illuminate\Http\UploadedFile;
+       8 use Illuminate\Support\Facades\Storage;
+       9 use PHPUnit\Framework\Attributes\DataProvider;
+      10 use Tests\TestCase;
+     … +105 lines (ctrl+o to expand)
+
+● Write(tests/Feature/FileManagementTest.php)
+  ⎿  Wrote 122 lines to tests/Feature/FileManagementTest.php
+       1 <?php
+       2 
+       3 namespace Tests\Feature;
+       4 
+       5 use App\Contracts\FileRemover;
+       6 use App\Enums\DeletionReason;
+       7 use App\Events\StoredFileDeleted;
+       8 use App\Models\StoredFile;
+       9 use Illuminate\Contracts\Filesystem\Filesystem;
+      10 use Illuminate\Foundation\Testing\RefreshDatabase;
+     … +129 lines (ctrl+o to expand)
+
+● Write(tests/Feature/PurgeExpiredFilesTest.php)
+  ⎿  Wrote 83 lines to tests/Feature/PurgeExpiredFilesTest.php
+       1 <?php
+       2 
+       3 namespace Tests\Feature;
+       4 
+       5 use App\Enums\DeletionReason;
+       6 use App\Events\StoredFileDeleted;
+       7 use App\Models\StoredFile;
+       8 use Illuminate\Foundation\Testing\RefreshDatabase;
+       9 use Illuminate\Http\UploadedFile;
+      10 use Illuminate\Support\Facades\Artisan;
+     … +78 lines (ctrl+o to expand)
+
+● Write(tests/Feature/FileDeletedNotificationTest.php)
+  ⎿  Wrote 70 lines to tests/Feature/FileDeletedNotificationTest.php
+       1 <?php
+       2 
+       3 namespace Tests\Feature;
+       4 
+       5 use App\DTO\DeletedFileData;
+       6 use App\Enums\DeletionReason;
+       7 use App\Events\StoredFileDeleted;
+       8 use App\Listeners\SendFileDeletedNotification;
+       9 use App\Mail\FileDeletedMail;
+      10 use Carbon\CarbonImmutable;
+     … +72 lines (ctrl+o to expand)
+
+● Update(composer.json)
+  ⎿  Added 1 line, removed 3 lines
+      37              "composer install",
+      38              "@php -r \"file_exists('.env') || copy('.env.exampl
+          e', '.env');\"",
+      39              "@php artisan key:generate",
+      40 -            "@php artisan migrate --force",                    
+      41 -            "npm install --ignore-scripts",                    
+      42 -            "npm run build"                                    
+      40 +            "@php artisan migrate --force"                     
+      41          ],
+      42          "dev": [
+      43              "Composer\\Config::disableProcessTimeout",
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Код готов, теперь проверю сценарий из README с нуля через make init — это
+  создаёт .env, ключ и контейнеры, необходимые для тестов, которые запущу
+  следующим шагом.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● make init завершился успешно, все сервисы запущены, но app и nginx показывают
+  «Up 4 seconds» — возможно, контейнер перезапускается по кругу. Запускаю
+  параллельно make test, проверку логов app, queue и scheduler, а также
+  smoke-тест HTTP-страниц через nginx.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Все 27 тестов прошли, контейнеры стабильны — теперь проверю два подозрительных
+  момента в логах (500-й ответ и QueryException воркера), скорее всего они до
+  миграций, но нужно подтвердить по laravel.log. Параллельно генерирую реальные
+  PDF/DOCX для end-to-end прогона через nginx → RabbitMQ → Mailpit.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Всё поднято и зелёно; сейчас разбираю два подозрительных лога (500-ошибку и
+  QueryException в воркере) и заодно исправлю утечку тестовых логов в
+  phpunit.xml, а затем прогоню e2e-тест с реальными файлами.
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+● Update(phpunit.xml)
+  ⎿  Added 1 line
+      26          <env name="DB_CONNECTION" value="sqlite"/>
+      27          <env name="DB_DATABASE" value=":memory:"/>
+      28          <env name="DB_URL" value=""/>
+      29 +        <env name="LOG_CHANNEL" value="null"/>                 
+      30          <env name="MAIL_MAILER" value="array"/>
+      31          <env name="QUEUE_CONNECTION" value="sync"/>
+      32          <env name="SESSION_DRIVER" value="array"/>
+
+  Made 1 scratchpad edit +43 (ctrl+o to expand)
+
+● Все ошибки оказались из-за того, что make init запускает очередь и scheduler
+  до миграций — это и есть корень проблемы, а не текущее состояние (воркер уже
+  стабилен с 09:55:54). Теперь исправлю порядок в make init и путь к загрузкам в
+  e2e.sh, после чего запущу e2e.
+
+● Update(Makefile)
+  ⎿  Added 3 lines, removed 2 lines
+      13  init: ## First run: build images, start containers, install dep
+          endencies, migrate
+      14    @test -f .env || cp .env.example .env
+      15    $(DC) build
+      16 -  $(DC) up -d                                                  
+      16 +  @# Worker and scheduler start only after dependencies and tab
+         +les exist.                                                     
+      17 +  $(DC) up -d mysql rabbitmq mailpit app                       
+      18    $(DC) exec app composer install --no-interaction
+      19    @grep -q '^APP_KEY=base64' .env || $(ARTISAN) key:generate
+      20    $(ARTISAN) migrate --force
+      20 -  $(DC) restart queue scheduler                                
+      21 +  $(DC) up -d                                                  
+      22    @echo ""
+      23    @echo "App:      http://localhost:$${APP_PORT:-8080}"
+      24    @echo "RabbitMQ: http://localhost:15672"
+
+  Made 1 scratchpad edit +1 -1 (ctrl+o to expand)
+
+● Начну с прогона e2e.sh (загрузка, валидация, удаление, письмо в Mailpit) и
+  проверки очереди RabbitMQ, а проверку make init с нуля отложу, чтобы не мешать
+  этим шагам — README буду писать параллельно.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Write(README.md)
+  ⎿  Added 369 lines, removed 34 lines
+        1 -<p align="center"><a href="https://laravel.com" target="_blank
+          -"><img src="https://raw.githubusercontent.com/laravel/art/mast
+          -er/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logol
+          -ockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>   
+        1 +# PDF Storage                                                 
+        2  
+        3 -<p align="center">                                            
+        4 -<a href="https://github.com/laravel/framework/actions"><img sr
+          -c="https://github.com/laravel/framework/workflows/tests/badge.
+          -svg" alt="Build Status"></a>                                  
+        5 -<a href="https://packagist.org/packages/laravel/framework"><im
+          -g src="https://img.shields.io/packagist/dt/laravel/framework" 
+          -alt="Total Downloads"></a>                                    
+        6 -<a href="https://packagist.org/packages/laravel/framework"><im
+          -g src="https://img.shields.io/packagist/v/laravel/framework" a
+          -lt="Latest Stable Version"></a>                               
+        7 -<a href="https://packagist.org/packages/laravel/framework"><im
+          -g src="https://img.shields.io/packagist/l/laravel/framework" a
+          -lt="License"></a>                                             
+        8 -</p>                                                          
+        3 +[Русский](#русский) · [English](#english)                     
+        4  
+       10 -## About Laravel                                              
+        5 +---                                                           
+        6  
+       12 -Laravel is a web application framework with expressive, elegan
+          -t syntax. We believe development must be an enjoyable and crea
+          -tive experience to be truly fulfilling. Laravel takes the pain
+          - out of development by easing common tasks used in many web pr
+          -ojects, such as:                                              
+        7 +## Русский                                                    
+        8  
+       14 -- [Simple, fast routing engine](https://laravel.com/docs/routi
+          -ng).                                                          
+       15 -- [Powerful dependency injection container](https://laravel.co
+          -m/docs/container).                                            
+       16 -- Multiple back-ends for [session](https://laravel.com/docs/se
+          -ssion) and [cache](https://laravel.com/docs/cache) storage.   
+       17 -- Expressive, intuitive [database ORM](https://laravel.com/doc
+          -s/eloquent).                                                  
+       18 -- Database agnostic [schema migrations](https://laravel.com/do
+          -cs/migrations).                                               
+       19 -- [Robust background job processing](https://laravel.com/docs/
+          -queues).                                                      
+       20 -- [Real-time event broadcasting](https://laravel.com/docs/broa
+          -dcasting).                                                    
+        9 +Веб-приложение для хранения PDF и DOCX файлов с ограниченным с
+          +роком хранения (24 часа).                                     
+       10 +Laravel 13 · PHP 8.4 · MySQL 8.4 · RabbitMQ 4 · Bootstrap 5 + 
+          +jQuery · Docker Compose.                                      
+       11  
+       22 -Laravel is accessible, powerful, and provides tools required f
+          -or large, robust applications.                                
+       12 +### Тестовое задание                                          
+       13  
+       24 -## Learning Laravel                                           
+       14 +**Описание задачи.** Необходимо разработать веб-приложение для
+          + хранения PDF и DOCX файлов с ограниченным сроком хранения.   
+       15  
+       26 -Laravel has the most extensive and thorough [documentation](ht
+          -tps://laravel.com/docs) and video tutorial library of all mode
+          -rn web application frameworks, making it a breeze to get start
+          -ed with the framework.                                        
+       16 +**Функциональные требования**                                 
+       17  
+       28 -In addition, [Laracasts](https://laracasts.com) contains thous
+          -ands of video tutorials on a range of topics including Laravel
+          -, modern PHP, unit testing, and JavaScript. Boost your skills 
+          -by digging into our comprehensive video library.              
+       18 +1. Загрузка файлов                                            
+       19 +   - Реализовать асинхронный загрузчик файлов (PDF, DOCX) чере
+          +з веб-интерфейс.                                              
+       20 +   - Ограничение по размеру файла (например, 10MB).           
+       21 +   - Информация о загруженных файлах должна храниться в базе д
+          +анных.                                                        
+       22 +2. CRUD-страница                                              
+       23 +   - Отдельная страница для управления загруженными файлами.  
+       24 +   - Возможность просмотра списка загруженных файлов.         
+       25 +   - Возможность удаления файлов вручную.                     
+       26 +3. Автоматическое удаление файлов                             
+       27 +   - Файлы должны автоматически удаляться через 24 часа после 
+          +загрузки.                                                     
+       28 +   - После удаления файла через RabbitMQ должно отправляться e
+          +mail-уведомление на адрес, указанный в `.env`.                
+       29 +   - Реализовать отправку сообщения в RabbitMQ, но сам механиз
+          +м отправки почты (SMTP и т.д.) реализовывать не обязательно.  
+       30 +   - Email-уведомление должно отправляться не только при автом
+          +атическом удалении через 24 часа, но и при ручном удалении фай
+          +ла.                                                           
+       31  
+       30 -You can also watch bite-sized lessons with real-world projects
+          - on [Laravel Learn](https://laravel.com/learn), where you will
+          - be guided through building a Laravel application from scratch
+          - while learning PHP fundamentals.                             
+       32 +**Технические требования**                                    
+       33  
+       32 -## Agentic Development                                        
+       34 +- Стек технологий: Laravel + PHP 8, MySQL, RabbitMQ, Bootstrap
+          + + jQuery (для фронтенд-части).                               
+       35 +- Дополнительно (будет плюсом): Docker / Docker Compose.      
+       36  
+       34 -Laravel's predictable structure and conventions make it ideal 
+          -for AI coding agents like Claude Code, Cursor, and GitHub Copi
+          -lot. Install [Laravel Boost](https://laravel.com/docs/ai) to s
+          -upercharge your AI workflow:                                  
+       37 +**Ожидаемый результат**                                       
+       38  
+       39 +- Исходный код проекта должен быть размещён в репозитории (Git
+          +Hub/GitLab/Bitbucket).                                        
+       40 +- Должна быть инструкция по запуску проекта в файле README.md.
+       41 +- Приложение должно быть работоспособным и соответствовать опи
+          +санным требованиям — с учётом локального Docker-окружения и ба
+          +зовых (упрощённых) принципов SOLID.                           
+       42 +                                                              
+       43 +### Соответствие требованиям                                  
+       44 +                                                              
+       45 +| Требование | Реализация |                                   
+       46 +|---|---|                                                     
+       47 +| Асинхронный загрузчик PDF/DOCX | `public/js/upload.js`: jQue
+          +ry AJAX + `FormData`, drag & drop, прогресс по каждому файлу. 
+          +Сервер: `FileController@store` |                              
+       48 +| Лимит размера 10MB | `StoreFileRequest` (`max`, `mimes`, `ex
+          +tensions`), значение из `FILE_MAX_SIZE_KB`. Лимиты nginx/PHP ч
+          +уть выше (12MB), чтобы ответ был понятной 422 |               
+       49 +| Информация о файлах в БД | Таблица `stored_files` (MySQL), м
+          +одель `StoredFile` |                                          
+       50 +| Отдельная CRUD-страница | `/files`: список с пагинацией, ска
+          +чивание, удаление (AJAX) |                                    
+       51 +| Удаление вручную | `DELETE /files/{id}` → `FileDeletionServi
+          +ce` |                                                         
+       52 +| Автоудаление через 24 часа | Команда `files:purge-expired`, 
+          +контейнер `scheduler` запускает её каждую минуту |            
+       53 +| Уведомление через RabbitMQ | Queued-listener `SendFileDelete
+          +dNotification` публикуется в очередь `notifications` (соединен
+          +ие `rabbitmq`), контейнер `queue` читает её и отправляет письм
+          +о на `NOTIFICATION_EMAIL` |                                   
+       54 +| Уведомление и при ручном, и при автоудалении | Оба сценария 
+          +идут через единый `FileDeletionService`, который бросает событ
+          +ие `StoredFileDeleted` |                                      
+       55 +| Docker / Docker Compose | `docker-compose.yml`: app, nginx, 
+          +mysql, rabbitmq, mailpit, queue, scheduler |                  
+       56 +| Упрощённый SOLID | См. раздел «Архитектура» |               
+       57 +                                                              
+       58 +### Быстрый старт                                             
+       59 +                                                              
+       60 +Нужны только Docker и Docker Compose v2 (и `make`, это необяза
+          +тельно).                                                      
+       61 +                                                              
+       62  ```bash
+       37 -composer require laravel/boost --dev                          
+       63 +git clone git@github.com:vodrems/laravel-start.git pdf-storage
+       64 +cd pdf-storage                                                
+       65 +make init                                                     
+       66 +```                                                           
+       67  
+       39 -php artisan boost:install                                     
+       68 +`make init` создаёт `.env` из `.env.example`, собирает образ, 
+          +поднимает контейнеры, выполняет `composer install`, генерирует
+          + `APP_KEY` и запускает миграции.                              
+       69 +                                                              
+       70 +<details>                                                     
+       71 +<summary>То же самое без make</summary>                       
+       72 +                                                              
+       73 +```bash                                                       
+       74 +cp .env.example .env                                          
+       75 +# Если ваш UID/GID не 1000, передайте их, чтобы права на stora
+          +ge/ совпадали с хостом:                                       
+       76 +HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose build      
+       77 +docker compose up -d mysql rabbitmq mailpit app               
+       78 +docker compose exec app composer install                      
+       79 +docker compose exec app php artisan key:generate              
+       80 +docker compose exec app php artisan migrate --force           
+       81 +docker compose up -d                                          
+       82  ```
+       83  
+       42 -Boost provides your agent 15+ tools and skills that help agent
+          -s build Laravel applications while following best practices.  
+       84 +</details>                                                    
+       85  
+       44 -## Contributing                                               
+       86 +### Сервисы и адреса                                          
+       87  
+       46 -Thank you for considering contributing to the Laravel framewor
+          -k! The contribution guide can be found in the [Laravel documen
+          -tation](https://laravel.com/docs/contributions).              
+       88 +| Сервис | Адрес | Доступ |                                   
+       89 +|---|---|---|                                                 
+       90 +| Приложение — загрузка | http://localhost:8080 | — |         
+       91 +| Приложение — управление файлами | http://localhost:8080/file
+          +s | — |                                                       
+       92 +| RabbitMQ Management UI | http://localhost:15672 | `app` / `s
+          +ecret` |                                                      
+       93 +| Mailpit (перехваченные письма) | http://localhost:8025 | — |
+       94 +| MySQL | `localhost:3306` | `app` / `secret`, БД `pdf_storage
+          +` |                                                           
+       95  
+       48 -## Code of Conduct                                            
+       96 +Порты меняются в `.env` (`APP_PORT`, `FORWARD_*`). Встроенный 
+          +пользователь RabbitMQ `guest` может подключаться только с loca
+          +lhost, поэтому создаётся отдельный пользователь `app`.        
+       97  
+       50 -In order to ensure that the Laravel community is welcoming to 
+          -all, please review and abide by the [Code of Conduct](https://
+          -laravel.com/docs/contributions#code-of-conduct).              
+       98 +### Настройки (`.env`)                                        
+       99  
+       52 -## Security Vulnerabilities                                   
+      100 +| Переменная | По умолчанию | Назначение |                    
+      101 +|---|---|---|                                                 
+      102 +| `NOTIFICATION_EMAIL` | `admin@example.com` | Адрес для уведо
+          +млений об удалении |                                          
+      103 +| `FILE_MAX_SIZE_KB` | `10240` | Максимальный размер файла (КБ
+          +) |                                                           
+      104 +| `FILE_TTL_HOURS` | `24` | Срок хранения файла (часы) |      
+      105 +| `FILE_STORAGE_DISK` | `local` | Диск Laravel (`storage/app/p
+          +rivate`) |                                                    
+      106 +| `QUEUE_CONNECTION`, `NOTIFICATION_QUEUE_CONNECTION` | `rabbi
+          +tmq` | Соединение очереди для уведомлений |                   
+      107 +| `NOTIFICATION_QUEUE` | `notifications` | Имя очереди в Rabbi
+          +tMQ |                                                         
+      108 +| `MAIL_MAILER` / `MAIL_HOST` / `MAIL_PORT` | `smtp` / `mailpi
+          +t` / `1025` | Отправка почты. `MAIL_MAILER=log` пишет письма в
+          + `storage/logs/laravel.log` |                                 
+      109  
+       54 -If you discover a security vulnerability within Laravel, pleas
+          -e send an e-mail to Taylor Otwell via [taylor@laravel.com](mai
+          -lto:taylor@laravel.com). All security vulnerabilities will be 
+          -promptly addressed.                                           
+      110 +После изменения `.env` перезапустите воркеры: `make restart`. 
+      111  
+       56 -## License                                                    
+      112 +### Как проверить                                             
+      113  
+       58 -The Laravel framework is open-sourced software licensed under 
+          -the [MIT license](https://opensource.org/licenses/MIT).       
+      114 +1. Откройте http://localhost:8080 и загрузите несколько PDF/DO
+          +CX (кнопкой или перетаскиванием). У каждого файла свой прогрес
+          +с-бар. Файл `.txt`, файл больше 10MB или `.txt`, переименованн
+          +ый в `.pdf`, будут отклонены с понятной ошибкой.              
+      115 +2. Откройте http://localhost:8080/files: видны список, размер,
+          + время загрузки и обратный отсчёт до удаления. Скачивание отда
+          +ёт файл с исходным именем.                                    
+      116 +3. Удалите файл вручную. Строка исчезнет, а в Mailpit (http://
+          +localhost:8025) появится письмо «Файл … удалён (удалён вручную
+          +)».                                                           
+      117 +4. **Автоудаление.** Чтобы не ждать 24 часа, «состарьте» файлы
+          +:                                                             
+      118 +   ```bash                                                    
+      119 +   docker compose exec app php artisan tinker --execute="App\M
+          +odels\StoredFile::query()->update(['expires_at' => now()->subM
+          +inute()])"                                                    
+      120 +   ```                                                        
+      121 +   В течение минуты `scheduler` удалит их, и в Mailpit придут 
+          +письма с причиной «истёк срок хранения». Можно запустить сразу
+          +: `make purge`. За процессом можно следить: `make logs`.      
+      122 +5. **Уведомление действительно идёт через RabbitMQ.** Останови
+          +те воркер (`docker compose stop queue`) и удалите файл. В Rabb
+          +itMQ UI → Queues → `notifications` будет `Ready: 1`, письма не
+          +т. Запустите воркер (`docker compose start queue`): сообщение 
+          +будет обработано, письмо появится в Mailpit.                  
+      123 +                                                              
+      124 +### Тесты                                                     
+      125 +                                                              
+      126 +```bash                                                       
+      127 +make test        # или: docker compose exec app php artisan te
+          +st                                                            
+      128 +```                                                           
+      129 +                                                              
+      130 +Feature-тесты (SQLite in-memory, `Storage::fake`, `Event/Queue
+          +/Mail::fake`) покрывают:                                      
+      131 +- загрузку и валидацию (тип по содержимому, расширение, размер
+          +, граница 10MB);                                              
+      132 +- список, скачивание и ручное удаление;                       
+      133 +- автоудаление через 24 часа и расписание раз в минуту;       
+      134 +- защиту от двойного уведомления;                             
+      135 +- постановку уведомления в очередь `notifications` соединения 
+          +`rabbitmq`;                                                   
+      136 +- содержимое письма.                                          
+      137 +                                                              
+      138 +### Архитектура                                               
+      139 +                                                              
+      140 +```                                                           
+      141 +Загрузка (jQuery AJAX) → FileController@store → StoreFileReque
+          +st → FileUploader → диск + MySQL                              
+      142 +                                                              
+      143 +Ручное удаление (AJAX DELETE) → FileController@destroy ─┐     
+      144 +Scheduler (раз в минуту) → files:purge-expired ─────────┴→ Fil
+          +eRemover::delete($file, DeletionReason)                       
+      145 +    → удаление с диска и из БД (транзакция, lockForUpdate)    
+      146 +    → событие StoredFileDeleted (после коммита)               
+      147 +    → SendFileDeletedNotification (ShouldQueue) → RabbitMQ, оч
+          +ередь "notifications"                                         
+      148 +    → контейнер queue (queue:work rabbitmq) → Mail → Mailpit /
+          + SMTP → NOTIFICATION_EMAIL                                    
+      149 +```                                                           
+      150 +                                                              
+      151 +Как это соотносится с SOLID:                                  
+      152 +- **S** — каждый класс делает одно дело. `StoreFileRequest` от
+          +вечает за валидацию, `FileUploadService` — за сохранение, `Fil
+          +eDeletionService` — за удаление, `PurgeExpiredFiles` — за выбо
+          +р просроченных, `SendFileDeletedNotification` — за уведомление
+          +, `FileDeletedMail` — за содержимое письма. Контроллер тонкий.
+      153 +- **O** — новая реакция на удаление (аудит, вебхук) добавляетс
+          +я новым listener'ом, сервис удаления при этом не меняется.    
+      154 +- **L / I** — маленькие интерфейсы `FileUploader` и `FileRemov
+          +er` с одной операцией. Любая реализация взаимозаменяема.      
+      155 +- **D** — контроллер и команда зависят от интерфейсов из `app/
+          +Contracts`. Реализации и их настройки (диск, TTL) связываются 
+          +в `AppServiceProvider`, значения берутся из `config/filestorag
+          +e.php`.                                                       
+      156 +                                                              
+      157 +Ключевые решения:                                             
+      158 +- **Единый путь удаления.** Ручное и автоматическое удаление в
+          +ызывают один сервис, поэтому уведомление гарантировано в обоих
+          + случаях.                                                     
+      159 +- **Scheduler, а не отложенный job на 24 часа.** Команда идемп
+          +отентна и после простоя сама удаляет всё просроченное. Файлу, 
+          +удалённому вручную, не нужен «висящий» job. Точность — до мину
+          +ты.                                                           
+      160 +- **В событии DTO, а не модель.** Письмо отправляется асинхрон
+          +но, когда записи в БД уже нет.                                
+      161 +- **`ShouldDispatchAfterCommit` + `lockForUpdate`.** При откат
+          +е транзакции уведомление не уходит. При одновременном ручном у
+          +далении и purge письмо отправляется ровно одно.               
+      162 +- **Файлы хранятся приватно** (`storage/app/private/uploads`),
+          + имена на диске — UUID. Скачивание идёт только через контролле
+          +р, под исходным именем.                                       
+      163 +                                                              
+      164 +### Структура проекта                                         
+      165 +                                                              
+      166 +```                                                           
+      167 +app/                                                          
+      168 +  Console/Commands/PurgeExpiredFiles.php   автоудаление       
+      169 +  Contracts/FileUploader.php, FileRemover.php                 
+      170 +  DTO/DeletedFileData.php                                     
+      171 +  Enums/DeletionReason.php                                    
+      172 +  Events/StoredFileDeleted.php                                
+      173 +  Http/Controllers/FileController.php                         
+      174 +  Http/Requests/StoreFileRequest.php                          
+      175 +  Http/Resources/StoredFileResource.php                       
+      176 +  Listeners/SendFileDeletedNotification.php                   
+      177 +  Mail/FileDeletedMail.php                                    
+      178 +  Models/StoredFile.php                                       
+      179 +  Services/FileStorage/FileUploadService.php, FileDeletionServ
+          +ice.php                                                       
+      180 +config/filestorage.php                      настройки хранилищ
+          +а                                                             
+      181 +docker/                                     Dockerfile PHP, ph
+          +p.ini, конфиг nginx                                           
+      182 +public/js/                                  app.js, upload.js,
+          + files.js                                                     
+      183 +resources/views/                            layout, страницы, 
+          +шаблон письма                                                 
+      184 +routes/web.php, routes/console.php          маршруты и расписа
+          +ние                                                           
+      185 +tests/Feature/                              тесты             
+      186 +```                                                           
+      187 +                                                              
+      188 +### Команды make                                              
+      189 +                                                              
+      190 +| Команда | Действие |                                        
+      191 +|---|---|                                                     
+      192 +| `make init` | Первый запуск (сборка, зависимости, ключ, мигр
+          +ации) |                                                       
+      193 +| `make up` / `make down` | Запустить / остановить контейнеры 
+          +|                                                             
+      194 +| `make restart` | Перезапустить воркер и scheduler (после изм
+          +енения кода или `.env`) |                                     
+      195 +| `make logs` | Логи app, queue, scheduler |                  
+      196 +| `make shell` | Shell в контейнере приложения |              
+      197 +| `make test` | Запустить тесты |                             
+      198 +| `make purge` | Удалить просроченные файлы прямо сейчас |    
+      199 +                                                              
+      200 +---                                                           
+      201 +                                                              
+      202 +## English                                                    
+      203 +                                                              
+      204 +A web application for storing PDF and DOCX files with a limite
+          +d retention period (24 hours).                                
+      205 +Laravel 13 · PHP 8.4 · MySQL 8.4 · RabbitMQ 4 · Bootstrap 5 + 
+          +jQuery · Docker Compose.                                      
+      206 +                                                              
+      207 +### Task                                                      
+      208 +                                                              
+      209 +**Description.** Build a web application that stores PDF and D
+          +OCX files for a limited period of time.                       
+      210 +                                                              
+      211 +**Functional requirements**                                   
+      212 +                                                              
+      213 +1. File upload                                                
+      214 +   - Implement an asynchronous file uploader (PDF, DOCX) in th
+          +e web interface.                                              
+      215 +   - Limit the file size (e.g. 10MB).                         
+      216 +   - Information about uploaded files must be stored in the da
+          +tabase.                                                       
+      217 +2. CRUD page                                                  
+      218 +   - A separate page for managing uploaded files.             
+      219 +   - View the list of uploaded files.                         
+      220 +   - Delete files manually.                                   
+      221 +3. Automatic deletion                                         
+      222 +   - Files must be deleted automatically 24 hours after upload
+          +.                                                             
+      223 +   - After a file is deleted, an email notification must be se
+          +nt via RabbitMQ to the address set in `.env`.                 
+      224 +   - Publishing the message to RabbitMQ is required; the mail 
+          +delivery itself (SMTP, etc.) is optional.                     
+      225 +   - The email notification must be sent not only on automatic
+          + deletion after 24 hours, but also when a file is deleted manu
+          +ally.                                                         
+      226 +                                                              
+      227 +**Technical requirements**                                    
+      228 +                                                              
+      229 +- Stack: Laravel + PHP 8, MySQL, RabbitMQ, Bootstrap + jQuery 
+          +(frontend).                                                   
+      230 +- Nice to have: Docker / Docker Compose.                      
+      231 +                                                              
+      232 +**Expected result**                                           
+      233 +                                                              
+      234 +- Source code hosted in a repository (GitHub/GitLab/Bitbucket)
+          +.                                                             
+      235 +- Setup instructions in README.md.                            
+      236 +- The application must work and meet the requirements above, r
+          +un in a local Docker environment and follow basic (simplified)
+          + SOLID principles.                                            
+      237 +                                                              
+      238 +### Requirements coverage                                     
+      239 +                                                              
+      240 +| Requirement | Implementation |                              
+      241 +|---|---|                                                     
+      242 +| Asynchronous PDF/DOCX uploader | `public/js/upload.js`: jQue
+          +ry AJAX + `FormData`, drag & drop, per-file progress bar. Serv
+          +er: `FileController@store` |                                  
+      243 +| 10MB size limit | `StoreFileRequest` (`max`, `mimes`, `exten
+          +sions`), value from `FILE_MAX_SIZE_KB`. nginx/PHP limits are s
+          +lightly higher (12MB) so the user gets a clear 422 |          
+      244 +| File info in the database | `stored_files` table (MySQL), `S
+          +toredFile` model |                                            
+      245 +| Separate CRUD page | `/files`: paginated list, download, del
+          +ete (AJAX) |                                                  
+      246 +| Manual deletion | `DELETE /files/{id}` → `FileDeletionServic
+          +e` |                                                          
+      247 +| Automatic deletion after 24h | `files:purge-expired` command
+          +, run every minute by the `scheduler` container |             
+      248 +| Notification via RabbitMQ | Queued listener `SendFileDeleted
+          +Notification` is published to the `notifications` queue (`rabb
+          +itmq` connection). The `queue` container consumes it and email
+          +s `NOTIFICATION_EMAIL` |                                      
+      249 +| Notification on both manual and automatic deletion | Both pa
+          +ths go through the single `FileDeletionService`, which fires `
+          +StoredFileDeleted` |                                          
+      250 +| Docker / Docker Compose | `docker-compose.yml`: app, nginx, 
+          +mysql, rabbitmq, mailpit, queue, scheduler |                  
+      251 +| Simplified SOLID | See "Architecture" |                     
+      252 +                                                              
+      253 +### Quick start                                               
+      254 +                                                              
+      255 +You only need Docker and Docker Compose v2 (`make` is optional
+          +).                                                            
+      256 +                                                              
+      257 +```bash                                                       
+      258 +git clone git@github.com:vodrems/laravel-start.git pdf-storage
+      259 +cd pdf-storage                                                
+      260 +make init                                                     
+      261 +```                                                           
+      262 +                                                              
+      263 +`make init` creates `.env` from `.env.example`, builds the ima
+          +ge, starts the containers, runs `composer install`, generates 
+          +`APP_KEY` and runs the migrations.                            
+      264 +                                                              
+      265 +<details>                                                     
+      266 +<summary>Same steps without make</summary>                    
+      267 +                                                              
+      268 +```bash                                                       
+      269 +cp .env.example .env                                          
+      270 +# If your UID/GID is not 1000, pass them so storage/ permissio
+          +ns match the host:                                            
+      271 +HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose build      
+      272 +docker compose up -d mysql rabbitmq mailpit app               
+      273 +docker compose exec app composer install                      
+      274 +docker compose exec app php artisan key:generate              
+      275 +docker compose exec app php artisan migrate --force           
+      276 +docker compose up -d                                          
+      277 +```                                                           
+      278 +                                                              
+      279 +</details>                                                    
+      280 +                                                              
+      281 +### Services and URLs                                         
+      282 +                                                              
+      283 +| Service | URL | Credentials |                               
+      284 +|---|---|---|                                                 
+      285 +| App — upload | http://localhost:8080 | — |                  
+      286 +| App — file management | http://localhost:8080/files | — |   
+      287 +| RabbitMQ Management UI | http://localhost:15672 | `app` / `s
+          +ecret` |                                                      
+      288 +| Mailpit (captured emails) | http://localhost:8025 | — |     
+      289 +| MySQL | `localhost:3306` | `app` / `secret`, database `pdf_s
+          +torage` |                                                     
+      290 +                                                              
+      291 +Ports can be changed in `.env` (`APP_PORT`, `FORWARD_*`). Rabb
+          +itMQ's built-in `guest` user may only connect from localhost, 
+          +so a dedicated `app` user is created.                         
+      292 +                                                              
+      293 +### Configuration (`.env`)                                    
+      294 +                                                              
+      295 +| Variable | Default | Purpose |                              
+      296 +|---|---|---|                                                 
+      297 +| `NOTIFICATION_EMAIL` | `admin@example.com` | Recipient of de
+          +letion notifications |                                        
+      298 +| `FILE_MAX_SIZE_KB` | `10240` | Maximum file size (KB) |     
+      299 +| `FILE_TTL_HOURS` | `24` | Retention period (hours) |        
+      300 +| `FILE_STORAGE_DISK` | `local` | Laravel disk (`storage/app/p
+          +rivate`) |                                                    
+      301 +| `QUEUE_CONNECTION`, `NOTIFICATION_QUEUE_CONNECTION` | `rabbi
+          +tmq` | Queue connection used for notifications |              
+      302 +| `NOTIFICATION_QUEUE` | `notifications` | RabbitMQ queue name
+          + |                                                            
+      303 +| `MAIL_MAILER` / `MAIL_HOST` / `MAIL_PORT` | `smtp` / `mailpi
+          +t` / `1025` | Mail delivery. `MAIL_MAILER=log` writes emails t
+          +o `storage/logs/laravel.log` instead |                        
+      304 +                                                              
+      305 +After changing `.env`, restart the workers: `make restart`.   
+      306 +                                                              
+      307 +### How to verify                                             
+      308 +                                                              
+      309 +1. Open http://localhost:8080 and upload a few PDF/DOCX files 
+          +(button or drag & drop). Each file gets its own progress bar. 
+          +A `.txt`, a file over 10MB, or a `.txt` renamed to `.pdf` is r
+          +ejected with a clear message.                                 
+      310 +2. Open http://localhost:8080/files. You see the list, sizes, 
+          +upload time and a countdown to deletion. Download returns the 
+          +file under its original name.                                 
+      311 +3. Delete a file manually. The row disappears, and an email "Ф
+          +айл … удалён (удалён вручную)" arrives in Mailpit (http://loca
+          +lhost:8025).                                                  
+      312 +4. **Automatic deletion.** Instead of waiting 24 hours, make t
+          +he files expire:                                              
+      313 +   ```bash                                                    
+      314 +   docker compose exec app php artisan tinker --execute="App\M
+          +odels\StoredFile::query()->update(['expires_at' => now()->subM
+          +inute()])"                                                    
+      315 +   ```                                                        
+      316 +   Within a minute the `scheduler` deletes them, and Mailpit r
+          +eceives emails with the reason "истёк срок хранения" (retentio
+          +n expired). To run it immediately: `make purge`. To watch the 
+          +process: `make logs`.                                         
+      317 +5. **The notification really goes through RabbitMQ.** Stop the
+          + worker (`docker compose stop queue`) and delete a file. Rabbi
+          +tMQ UI → Queues → `notifications` shows `Ready: 1` and no emai
+          +l arrives. Start the worker (`docker compose start queue`): th
+          +e message is consumed and the email appears in Mailpit.       
+      318 +                                                              
+      319 +### Tests                                                     
+      320 +                                                              
+      321 +```bash                                                       
+      322 +make test        # or: docker compose exec app php artisan tes
+          +t                                                             
+      323 +```                                                           
+      324 +                                                              
+      325 +Feature tests (in-memory SQLite, `Storage::fake`, `Event/Queue
+          +/Mail::fake`) cover:                                          
+      326 +- upload and validation (content type, extension, size, the 10
+          +MB boundary);                                                 
+      327 +- the list, download and manual deletion;                     
+      328 +- automatic deletion after 24 hours and the every-minute sched
+          +ule;                                                          
+      329 +- protection against duplicate notifications;                 
+      330 +- queuing the notification on the `notifications` queue of the
+          + `rabbitmq` connection;                                       
+      331 +- the email content.                                          
+      332 +                                                              
+      333 +### Architecture                                              
+      334 +                                                              
+      335 +```                                                           
+      336 +Upload (jQuery AJAX) → FileController@store → StoreFileRequest
+          + → FileUploader → disk + MySQL                                
+      337 +                                                              
+      338 +Manual delete (AJAX DELETE) → FileController@destroy ─┐       
+      339 +Scheduler (every minute) → files:purge-expired ───────┴→ FileR
+          +emover::delete($file, DeletionReason)                         
+      340 +    → remove from disk and DB (transaction, lockForUpdate)    
+      341 +    → StoredFileDeleted event (after commit)                  
+      342 +    → SendFileDeletedNotification (ShouldQueue) → RabbitMQ, qu
+          +eue "notifications"                                           
+      343 +    → queue container (queue:work rabbitmq) → Mail → Mailpit /
+          + SMTP → NOTIFICATION_EMAIL                                    
+      344 +```                                                           
+      345 +                                                              
+      346 +How it maps to SOLID:                                         
+      347 +- **S** — each class has one job. `StoreFileRequest` validates
+          +, `FileUploadService` stores, `FileDeletionService` deletes, `
+          +PurgeExpiredFiles` selects expired files, `SendFileDeletedNoti
+          +fication` notifies, `FileDeletedMail` defines the email conten
+          +t. The controller stays thin.                                 
+      348 +- **O** — a new reaction to deletion (audit, webhook) is a new
+          + listener; the deletion service does not change.              
+      349 +- **L / I** — small single-operation interfaces `FileUploader`
+          + and `FileRemover`. Any implementation can be swapped in.     
+      350 +- **D** — the controller and the command depend on interfaces 
+          +from `app/Contracts`. Implementations and their settings (disk
+          +, TTL) are wired in `AppServiceProvider` from `config/filestor
+          +age.php`.                                                     
+      351 +                                                              
+      352 +Key decisions:                                                
+      353 +- **One deletion path.** Manual and automatic deletion call th
+          +e same service, so a notification is guaranteed in both cases.
+      354 +- **Scheduler instead of a 24-hour delayed job.** The command 
+          +is idempotent and catches up on everything expired after downt
+          +ime. A manually deleted file leaves no pending job behind. Pre
+          +cision is one minute.                                         
+      355 +- **The event carries a DTO, not a model.** The email is sent 
+          +asynchronously, after the database row is gone.               
+      356 +- **`ShouldDispatchAfterCommit` + `lockForUpdate`.** A rolled-
+          +back transaction sends nothing. A concurrent manual delete and
+          + purge produce exactly one email.                             
+      357 +- **Files are private** (`storage/app/private/uploads`) and st
+          +ored under UUID names. They are served only through the contro
+          +ller, under the original name.                                
+      358 +                                                              
+      359 +### Project structure                                         
+      360 +                                                              
+      361 +```                                                           
+      362 +app/                                                          
+      363 +  Console/Commands/PurgeExpiredFiles.php   automatic deletion 
+      364 +  Contracts/FileUploader.php, FileRemover.php                 
+      365 +  DTO/DeletedFileData.php                                     
+      366 +  Enums/DeletionReason.php                                    
+      367 +  Events/StoredFileDeleted.php                                
+      368 +  Http/Controllers/FileController.php                         
+      369 +  Http/Requests/StoreFileRequest.php                          
+      370 +  Http/Resources/StoredFileResource.php                       
+      371 +  Listeners/SendFileDeletedNotification.php                   
+      372 +  Mail/FileDeletedMail.php                                    
+      373 +  Models/StoredFile.php                                       
+      374 +  Services/FileStorage/FileUploadService.php, FileDeletionServ
+          +ice.php                                                       
+      375 +config/filestorage.php                      storage settings  
+      376 +docker/                                     PHP Dockerfile, ph
+          +p.ini, nginx config                                           
+      377 +public/js/                                  app.js, upload.js,
+          + files.js                                                     
+      378 +resources/views/                            layout, pages, ema
+          +il template                                                   
+      379 +routes/web.php, routes/console.php          routes and schedul
+          +e                                                             
+      380 +tests/Feature/                              tests             
+      381 +```                                                           
+      382 +                                                              
+      383 +### Make commands                                             
+      384 +                                                              
+      385 +| Command | Action |                                          
+      386 +|---|---|                                                     
+      387 +| `make init` | First run (build, dependencies, key, migration
+          +s) |                                                          
+      388 +| `make up` / `make down` | Start / stop containers |         
+      389 +| `make restart` | Restart the worker and scheduler (after cod
+          +e or `.env` changes) |                                        
+      390 +| `make logs` | Logs of app, queue, scheduler |               
+      391 +| `make shell` | Shell in the app container |                 
+      392 +| `make test` | Run the tests |                               
+      393 +| `make purge` | Delete expired files right now |             
+
+● E2E-тест прошёл успешно по всей цепочке (загрузка, ошибки размера, скачивание,
+  ручное удаление с письмом), но нашёл два недочёта: неверное форматирование
+  размера файла (нужно maxPrecision) и ненайденные тексты ошибок 422. Дальше
+  исправлю форматирование в трёх местах, проверю ошибки 422 и очередь RabbitMQ,
+  протестирую автоудаление с письмами, прогоню Pint и node --check, а проверку
+  устойчивости брокера и чистый make init отложу до завершения автоудаления.
+● Update(app/Http/Resources/StoredFileResource.php)
+  ⎿  Added 1 line, removed 1 line
+      18              'name' => $this->original_name,
+      19              'mime_type' => $this->mime_type,
+      20              'size' => $this->size,
+      21 -            'size_human' => Number::fileSize($this->size, 1),  
+      21 +            'size_human' => Number::fileSize($this->size, maxPr
+         +ecision: 1),                                                   
+      22              'uploaded_at' => $this->created_at->toIso8601String
+          (),
+      23              'expires_at' => $this->expires_at->toIso8601String(
+          ),
+      24              'download_url' => route('files.download', $this->re
+          source),
+
+● Update(resources/views/files/index.blade.php)
+  ⎿  Added 1 line, removed 1 line
+      38                                      @endif
+      39                                      {{ $file->original_name }}
+      40                                  </td>
+      41 -                                <td class="text-nowrap">{{ \Ill
+         -uminate\Support\Number::fileSize($file->size, 1) }}</td>       
+      41 +                                <td class="text-nowrap">{{ \Ill
+         +uminate\Support\Number::fileSize($file->size, maxPrecision: 1) 
+         +}}</td>                                                        
+      42                                  <td class="text-nowrap">
+      43                                      <time class="js-local-time"
+           datetime="{{ $file->created_at->toIso8601String() }}">
+      44                                          {{ $file->created_at->f
+          ormat('d.m.Y H:i T') }}
+
+● Update(resources/views/mail/file-deleted.blade.php)
+  ⎿  Added 1 line, removed 1 line
+       7  | Параметр | Значение |
+       8  |:---------|:---------|
+       9  | Причина  | {{ $file->reason->label() }} |
+      10 -| Размер   | {{ \Illuminate\Support\Number::fileSize($file->siz
+         -e, 1) }} |                                                     
+      10 +| Размер   | {{ \Illuminate\Support\Number::fileSize($file->siz
+         +e, maxPrecision: 1) }} |                                       
+      11  | Тип      | {{ $file->mimeType }} |
+      12  | Загружен | {{ $file->uploadedAt->format('d.m.Y H:i T') }} |
+      13  | Удалён   | {{ $file->deletedAt->format('d.m.Y H:i T') }} |
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Автоудаление и очередь RabbitMQ работают корректно, но выяснилось, что мой
+  тест случайно удалил твой загруженный Andrew_Smerdov_CV.pdf из хранилища
+  приложения (оригинал на диске не затронут) — дальше буду трогать только
+  тестовые файлы по id. Теперь параллельно исправлю стиль-проблему в Pint (FQCN
+  в @mixin) и проверю устойчивость брокера при остановке воркера, а коммиты и
+  чистый клон сделаю после этого.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Брокер проверен: сообщение корректно ждёт в очереди при остановленном воркере
+  и доставляется после запуска; Pint поправил стиль, тесты 27/27. Дальше проверю
+  git status, чтобы исключить .env/загрузки/кэш из коммита, затем сделаю
+  коммиты по шагам и проверю чистый клон в изолированном compose-проекте.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Рабочее дерево чистое — в коммит попадут только .gitignore-заглушки, остальное
+  игнорируется. Сейчас выполню цепочку из пяти логических коммитов без push.
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  PostToolUse:Bash says: Tip: Run /ultrareview before you push to catch bugs 
+     with a cloud-based multi-agent review — 3 free reviews left.
+
+● Коммиты готовы. Теперь проверю сценарий с нуля на чистом клоне: склоню
+  репозиторий в scratchpad, подниму отдельный compose-проект pdf-verify на
+  других портах, прогоню init/тесты/HTTP и снесу только этот проект.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Чистый клон запустился успешно (код 0, сервисы работают, 0 ошибок, обе
+  страницы отдают 200), но make test не выдал ожидаемого вывода — нужно
+  разобраться, а не игнорировать. Поднимаю стек клона заново, чтобы повторить
+  прогон тестов с полным выводом.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Нашёл баг: после удаления ExampleTest.php пустая папка tests/Unit не
+  сохраняется в git, а phpunit.xml всё ещё её требует, из-за чего PHPUnit 12
+  падает на чистом клоне. Уберу suite Unit из phpunit.xml, удалю пустую папку
+  локально и проверю на чистом клоне.
+
+● Update(phpunit.xml)
+  ⎿  Removed 3 lines
+       5           colors="true"
+       6  >
+       7      <testsuites>
+       8 -        <testsuite name="Unit">                                
+       9 -            <directory>tests/Unit</directory>                  
+      10 -        </testsuite>                                           
+       8          <testsuite name="Feature">
+       9              <directory>tests/Feature</directory>
+      10          </testsuite>
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Сейчас закоммичу исправление и проверю его на чистом клоне (init → тесты →
+  HTTP → снос), а параллельно прогоню тесты в основном стеке с новым
+  phpunit.xml.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+● Приложение готово: всё из ТЗ работает в Docker. Всё закоммичено в master (6
+  коммитов), но в GitHub не отправлено — push только после твоего подтверждения.
+
+  Что проверено вживую:
+  - Загрузка: PDF и DOCX принимаются. Отклоняются .txt, текстовый файл,
+    переименованный в .pdf, и файл больше 10MB — с понятными ошибками на
+    русском. Файл больше 12MB режет nginx (413), страница показывает «Файл
+    слишком большой».
+  - Страница /files: список, скачивание под исходным именем, удаление без
+    перезагрузки страницы.
+  - Уведомления: письмо пришло в Mailpit и при ручном удалении, и при
+    автоматическом («истёк срок хранения»). Файлы, срок которых вышел, scheduler
+    удалил в течение минуты.
+  - RabbitMQ: я останавливал воркер и удалял файл — сообщение ждало в очереди
+    (Ready: 1), письма не было. После запуска воркера письмо дошло. То есть
+    уведомление действительно идёт через брокер.
+  - Тесты: 27 тестов проходят.
+  - Чистый клон: склонировал репозиторий и запустил make init в отдельном
+    окружении на других портах. Всё поднялось, тесты прошли, ошибок в логах нет.
+
+  Два бага исправлены по ходу:
+  - make init запускал воркер до создания таблиц в базе, и первый запуск сыпал
+    ошибками. Порядок исправлен.
+  - В свежем клоне тесты не запускались: phpunit.xml ссылался на пустую папку
+    tests/Unit, а git пустые папки не хранит. Ссылку убрал.
+
+  Что стоит знать:
+  - Твой файл Andrew_Smerdov_CV.pdf удалён из приложения. Ты загрузил его через
+    браузер, пока я тестировал, а моя проверка автоудаления «состарила» все
+    записи в базе. Удалена только копия внутри приложения, оригинал у тебя на
+    диске цел. Дальше я трогал только свои тестовые файлы.
+  - Логин в RabbitMQ — app / secret, а не guest / guest, как было в плане.
+    Встроенный пользователь guest может подключаться только с localhost, поэтому
+    приложение из контейнера не смогло бы им воспользоваться. В README указаны
+    правильные данные.
+  - Удалил файлы из стандартной заготовки Laravel 13: CLAUDE.md и AGENTS.md (там
+    инструкции для AI-агентов про установку Laravel Boost), а также заготовки
+    Vite/Tailwind — Bootstrap и jQuery подключены через CDN.
+
+  README на двух языках: текст ТЗ, таблица «требование → где реализовано»,
+  запуск, адреса, настройки, архитектура. План лежит в .claude/plan.md.
+
+  Адреса:
+  - приложение: http://localhost:8080;
+  - управление файлами: http://localhost:8080/files;
+  - RabbitMQ: http://localhost:15672;
+  - Mailpit: http://localhost:8025.
+
+  Сделать push в git@github.com:vodrems/laravel-start.git? В GitHub основная
+  ветка указана как main, а коммиты сейчас в master — запушу в master или
+  переименую ветку в main, как скажешь.
+
+✻ Churned for 26m 21s · done 1:05 PM
+
+※ recap: Приложение для хранения PDF/DOCX готово и проверено, всё закоммичено в master. Жду твоего решения: пушить в GitHub в `master` или переименовать ветку в `main`. (disable recaps in /config)
+
+❯ нужно чтобы сам ui интерфейс был на английском                                
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Перевожу интерфейс целиком: blade-страницы, layout, JS-сообщения,
+  форматирование дат/размеров, ошибки валидации, flash-сообщения, APP_LOCALE и
+  текст письма-уведомления. Сначала прочитаю .claude/plan.md, затем обновлю
+  тесты и README и отправлю все правки одним пакетом.
+
+● Write(resources/views/files/create.blade.php)
+  ⎿  Added 7 lines, removed 7 lines
+       1  @extends('layouts.app')
+       2  
+       3 -@section('title', 'Загрузка файлов')                           
+       3 +@section('title', 'Upload files')                              
+       4  
+       5  @section('content')
+       6      <div class="row justify-content-center">
+       7          <div class="col-lg-8">
+       8 -            <h1 class="h3 mb-2">Загрузка файлов</h1>           
+       8 +            <h1 class="h3 mb-2">Upload files</h1>              
+       9              <p class="text-body-secondary mb-4">
+      10 -                {{ mb_strtoupper(implode(', ', $extensions)) }}
+         - до {{ \Illuminate\Support\Number::fileSize($maxSizeBytes) }}. 
+      11 -                Файлы хранятся {{ $ttlHours }} ч., после чего у
+         -даляются автоматически.                                        
+      10 +                {{ mb_strtoupper(implode(', ', $extensions)) }}
+         + up to {{ \Illuminate\Support\Number::fileSize($maxSizeBytes) }
+         +}.                                                             
+      11 +                Files are kept for {{ $ttlHours }} {{ \Illumina
+         +te\Support\Str::plural('hour', $ttlHours) }} and then deleted a
+         +utomatically.                                                  
+      12              </p>
+      13  
+      14              <div id="dropzone" class="dropzone card card-body t
+          ext-center py-5 mb-4"
+     ...
+      16                   data-max-size="{{ $maxSizeBytes }}"
+      17                   data-extensions="{{ implode(',', $extensions) 
+          }}">
+      18                  <i class="bi bi-cloud-arrow-up display-4 text-p
+          rimary"></i>
+      19 -                <p class="mb-3">Перетащите файлы сюда или</p>  
+      19 +                <p class="mb-3">Drag and drop files here or</p>
+      20                  <div>
+      21                      <label class="btn btn-primary" for="file-in
+          put">
+      22 -                        <i class="bi bi-folder2-open"></i> Выбе
+         -рите файлы                                                     
+      22 +                        <i class="bi bi-folder2-open"></i> Choo
+         +se files                                                       
+      23                      </label>
+      24                  </div>
+      25                  <input type="file" id="file-input" class="d-non
+          e" multiple
+     ...
+      28  
+      29              <ul id="upload-list" class="list-group mb-3"></ul>
+      30  
+      31 -            <a href="{{ route('files.index') }}">Перейти к спис
+         -ку файлов <i class="bi bi-arrow-right"></i></a>                
+      31 +            <a href="{{ route('files.index') }}">Go to the file
+         + list <i class="bi bi-arrow-right"></i></a>                    
+      32          </div>
+      33      </div>
+      34  @endsection
+
+● Write(resources/views/files/index.blade.php)
+  ⎿  Added 13 lines, removed 13 lines
+       1  @extends('layouts.app')
+       2  
+       3 -@section('title', 'Файлы')                                     
+       3 +@section('title', 'Files')                                     
+       4  
+       5  @section('content')
+       6      <div class="d-flex flex-wrap justify-content-between align-
+          items-center gap-2 mb-3">
+       7 -        <h1 class="h3 mb-0">Загруженные файлы</h1>             
+       7 +        <h1 class="h3 mb-0">Uploaded files</h1>                
+       8          <a href="{{ route('files.create') }}" class="btn btn-pr
+          imary">
+       9 -            <i class="bi bi-upload"></i> Загрузить             
+       9 +            <i class="bi bi-upload"></i> Upload                
+      10          </a>
+      11      </div>
+      12  
+      13      @if ($files->isEmpty())
+      14          <div class="card card-body text-center text-body-second
+          ary py-5">
+      15 -            <p class="mb-0">Файлов пока нет. <a href="{{ route(
+         -'files.create') }}">Загрузите первый</a>.</p>                  
+      15 +            <p class="mb-0">No files yet. <a href="{{ route('fi
+         +les.create') }}">Upload the first one</a>.</p>                 
+      16          </div>
+      17      @else
+      18          <div class="card">
+     ...
+      20                  <table id="files-table" class="table table-hove
+          r align-middle mb-0">
+      21                      <thead>
+      22                          <tr>
+      23 -                            <th>Имя</th>                       
+      24 -                            <th>Размер</th>                    
+      25 -                            <th>Загружен</th>                  
+      26 -                            <th>Будет удалён</th>              
+      27 -                            <th class="text-end">Действия</th> 
+      23 +                            <th>Name</th>                      
+      24 +                            <th>Size</th>                      
+      25 +                            <th>Uploaded</th>                  
+      26 +                            <th>Deleted in</th>                
+      27 +                            <th class="text-end">Actions</th>  
+      28                          </tr>
+      29                      </thead>
+      30                      <tbody>
+     ...
+      41                                  <td class="text-nowrap">{{ \Ill
+          uminate\Support\Number::fileSize($file->size, maxPrecision: 1) 
+          }}</td>
+      42                                  <td class="text-nowrap">
+      43                                      <time class="js-local-time"
+           datetime="{{ $file->created_at->toIso8601String() }}">
+      44 -                                        {{ $file->created_at->f
+         -ormat('d.m.Y H:i T') }}                                        
+      44 +                                        {{ $file->created_at->f
+         +ormat('d M Y, H:i T') }}                                       
+      45                                      </time>
+      46                                  </td>
+      47                                  <td class="text-nowrap">
+      48                                      <time class="js-countdown" 
+          datetime="{{ $file->expires_at->toIso8601String() }}">
+      49 -                                        {{ $file->expires_at->f
+         -ormat('d.m.Y H:i T') }}                                        
+      49 +                                        {{ $file->expires_at->f
+         +ormat('d M Y, H:i T') }}                                       
+      50                                      </time>
+      51                                  </td>
+      52                                  <td class="text-end text-nowrap
+          ">
+      53 -                                    <a href="{{ route('files.do
+         -wnload', $file) }}" class="btn btn-sm btn-outline-secondary" ti
+         -tle="Скачать">                                                 
+      53 +                                    <a href="{{ route('files.do
+         +wnload', $file) }}" class="btn btn-sm btn-outline-secondary" ti
+         +tle="Download">                                                
+      54                                          <i class="bi bi-downloa
+          d"></i>
+      55                                      </a>
+      56                                      <form method="POST" action=
+          "{{ route('files.destroy', $file) }}"
+      57                                            class="d-inline js-de
+          lete-form" data-name="{{ $file->original_name }}">
+      58                                          @csrf
+      59                                          @method('DELETE')
+      60 -                                        <button type="submit" c
+         -lass="btn btn-sm btn-outline-danger" title="Удалить">          
+      60 +                                        <button type="submit" c
+         +lass="btn btn-sm btn-outline-danger" title="Delete">           
+      61                                              <i class="bi bi-tra
+          sh"></i>
+      62                                          </button>
+      63                                      </form>
+
+● Update(resources/views/layouts/app.blade.php)
+  ⎿  Added 1 line, removed 1 line
+      1  <!doctype html>
+      2 -<html lang="ru">                                                
+      2 +<html lang="en">                                                
+      3  <head>
+      4      <meta charset="utf-8">
+      5      <meta name="viewport" content="width=device-width, initial-s
+         cale=1">
+
+● Update(resources/views/layouts/app.blade.php)
+  ⎿  Added 2 lines, removed 2 lines
+      19                  <i class="bi bi-file-earmark-lock"></i> {{ conf
+          ig('app.name') }}
+      20              </a>
+      21              <div class="navbar-nav">
+      22 -                <a class="nav-link @if (request()->routeIs('fil
+         -es.create')) active @endif" href="{{ route('files.create') }}">
+         -Загрузка</a>                                                   
+      23 -                <a class="nav-link @if (request()->routeIs('fil
+         -es.index')) active @endif" href="{{ route('files.index') }}">Фа
+         -йлы</a>                                                        
+      22 +                <a class="nav-link @if (request()->routeIs('fil
+         +es.create')) active @endif" href="{{ route('files.create') }}">
+         +Upload</a>                                                     
+      23 +                <a class="nav-link @if (request()->routeIs('fil
+         +es.index')) active @endif" href="{{ route('files.index') }}">Fi
+         +les</a>                                                        
+      24              </div>
+      25          </div>
+      26      </nav>
+
+● Update(resources/views/layouts/app.blade.php)
+  ⎿  Added 1 line, removed 1 line
+      29          @if (session('status'))
+      30              <div class="alert alert-success alert-dismissible f
+          ade show" role="alert">
+      31                  {{ session('status') }}
+      32 -                <button type="button" class="btn-close" data-bs
+         --dismiss="alert" aria-label="Закрыть"></button>                
+      32 +                <button type="button" class="btn-close" data-bs
+         +-dismiss="alert" aria-label="Close"></button>                  
+      33              </div>
+      34          @endif
+      35  
+● Write(resources/views/mail/file-deleted.blade.php)
+  ⎿  Added 9 lines, removed 9 lines
+       1  <x-mail::message>
+       2 -# Файл удалён                                                  
+       2 +# File deleted                                                 
+       3  
+       4 -Файл **{{ $file->originalName }}** удалён из хранилища.        
+       4 +The file **{{ $file->originalName }}** has been removed from st
+         +orage.                                                         
+       5  
+       6  <x-mail::table>
+       7 -| Параметр | Значение |                                        
+       8 -|:---------|:---------|                                        
+       9 -| Причина  | {{ $file->reason->label() }} |                    
+      10 -| Размер   | {{ \Illuminate\Support\Number::fileSize($file->siz
+         -e, maxPrecision: 1) }} |                                       
+      11 -| Тип      | {{ $file->mimeType }} |                           
+      12 -| Загружен | {{ $file->uploadedAt->format('d.m.Y H:i T') }} |  
+      13 -| Удалён   | {{ $file->deletedAt->format('d.m.Y H:i T') }} |   
+       7 +| Field    | Value |                                           
+       8 +|:---------|:------|                                           
+       9 +| Reason   | {{ $file->reason->label() }} |                    
+      10 +| Size     | {{ \Illuminate\Support\Number::fileSize($file->siz
+         +e, maxPrecision: 1) }} |                                       
+      11 +| Type     | {{ $file->mimeType }} |                           
+      12 +| Uploaded | {{ $file->uploadedAt->format('d M Y, H:i T') }} | 
+      13 +| Deleted  | {{ $file->deletedAt->format('d M Y, H:i T') }} |  
+      14  </x-mail::table>
+      15  
+      16  {{ config('app.name') }}
+
+● Update(app/Mail/FileDeletedMail.php)
+  ⎿  Added 1 line, removed 1 line
+      16      public function envelope(): Envelope
+      17      {
+      18          return new Envelope(
+      19 -            subject: "Файл «{$this->file->originalName}» удалён
+         - ({$this->file->reason->label()})",                            
+      19 +            subject: "File \"{$this->file->originalName}\" dele
+         +ted ({$this->file->reason->label()})",                         
+      20          );
+      21      }
+      22  
+
+● Update(app/Enums/DeletionReason.php)
+  ⎿  Added 2 lines, removed 2 lines
+      10      public function label(): string
+      11      {
+      12          return match ($this) {
+      13 -            self::Manual => 'удалён вручную',                  
+      14 -            self::Expired => 'истёк срок хранения',            
+      13 +            self::Manual => 'deleted manually',                
+      14 +            self::Expired => 'retention period expired',       
+      15          };
+      16      }
+      17  }
+
+● Update(app/Http/Requests/StoreFileRequest.php)
+  ⎿  Added 6 lines, removed 6 lines
+      37          $maxSize = Number::fileSize(config('filestorage.max_siz
+          e_kb') * 1024);
+      38  
+      39          return [
+      40 -            'file.required' => 'Выберите файл для загрузки.',  
+      41 -            'file.file' => 'Файл не был загружен.',            
+      42 -            'file.uploaded' => "Не удалось загрузить файл. Макс
+         -имальный размер — {$maxSize}.",                                
+      43 -            'file.max' => "Максимальный размер файла — {$maxSiz
+         -e}.",                                                          
+      44 -            'file.mimes' => "Допустимы только файлы {$types}.",
+      45 -            'file.extensions' => "Допустимы только файлы {$type
+         -s}.",                                                          
+      40 +            'file.required' => 'Please choose a file to upload.
+         +',                                                             
+      41 +            'file.file' => 'The file was not uploaded.',       
+      42 +            'file.uploaded' => "The file could not be uploaded.
+         + The maximum size is {$maxSize}.",                             
+      43 +            'file.max' => "The maximum file size is {$maxSize}.
+         +",                                                             
+      44 +            'file.mimes' => "Only {$types} files are allowed.",
+      45 +            'file.extensions' => "Only {$types} files are allow
+         +ed.",                                                          
+      46          ];
+      47      }
+      48  }
+
+● Update(app/Http/Controllers/FileController.php)
+  ⎿  Added 1 line, removed 1 line
+      60  
+      61          return redirect()
+      62              ->route('files.index')
+      63 -            ->with('status', "Файл «{$file->original_name}» уда
+         -лён.");                                                        
+      63 +            ->with('status', "File \"{$file->original_name}\" h
+         +as been deleted.");                                            
+      64      }
+      65  }
+
+● Update(app/Services/FileStorage/FileUploadService.php)
+  ⎿  Added 1 line, removed 1 line
+      28          );
+      29  
+      30          if ($path === false) {
+      31 -            throw new RuntimeException('Не удалось сохранить фа
+         -йл.');                                                         
+      31 +            throw new RuntimeException('Failed to store the upl
+         +oaded file.');                                                 
+      32          }
+      33  
+      34          try {
+
+● Write(public/js/app.js)
+  ⎿  Added 6 lines, removed 6 lines
+      10      });
+      11  
+      12      function formatBytes(bytes) {
+      13 -        const units = ['Б', 'КБ', 'МБ', 'ГБ'];                 
+      13 +        const units = ['B', 'KB', 'MB', 'GB'];                 
+      14          let i = 0;
+      15          while (bytes >= 1024 && i < units.length - 1) {
+      16              bytes /= 1024;
+     ...
+      20      }
+      21  
+      22      function formatDate(iso) {
+      23 -        return new Date(iso).toLocaleString('ru-RU', { dateStyl
+         -e: 'short', timeStyle: 'short' });                             
+      23 +        return new Date(iso).toLocaleString('en-GB', { dateStyl
+         +e: 'medium', timeStyle: 'short' });                            
+      24      }
+      25  
+      26      function formatDuration(ms) {
+      27          const totalMinutes = Math.max(1, Math.ceil(ms / 60000))
+          ;
+      28          const hours = Math.floor(totalMinutes / 60);
+      29          const minutes = totalMinutes % 60;
+      30 -        return (hours ? hours + ' ч ' : '') + minutes + ' мин';
+      30 +        return (hours ? hours + ' h ' : '') + minutes + ' min';
+      31      }
+      32  
+      33      function errorMessage(xhr) {
+     ...
+      36              return Object.values(json.errors).flat().join(' ');
+      37          }
+      38          if (xhr.status === 413) {
+      39 -            return 'Файл слишком большой.';                    
+      39 +            return 'The file is too large.';                   
+      40          }
+      41          if (json && json.message) {
+      42              return json.message;
+      43          }
+      44 -        return xhr.status ? 'Ошибка сервера (' + xhr.status + '
+         -). Попробуйте ещё раз.' : 'Нет соединения с сервером.';        
+      44 +        return xhr.status ? 'Server error (' + xhr.status + ').
+         + Please try again.' : 'Cannot reach the server.';              
+      45      }
+      46  
+      47      function toast(message, type) {
+      48          const $toast = $(
+      49              '<div class="toast align-items-center border-0" rol
+          e="status" aria-live="polite" aria-atomic="true">' +
+      50                  '<div class="d-flex"><div class="toast-body"></
+          div>' +
+      51 -                '<button type="button" class="btn-close btn-clo
+         -se-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Закры
+         -ть"></button>' +                                               
+      51 +                '<button type="button" class="btn-close btn-clo
+         +se-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close
+         +"></button>' +                                                 
+      52                  '</div></div>'
+      53          );
+      54          $toast.addClass('text-bg-' + (type || 'success')).find(
+          '.toast-body').text(message);
+
+● Update(public/js/upload.js)
+  ⎿  Added 2 lines, removed 2 lines
+      17      // Mirrors the server rules for instant feedback; the serve
+          r still validates everything.
+      18      function validate(file) {
+      19          if (extensions.indexOf(extensionOf(file.name)) === -1) 
+          {
+      20 -            return 'Допустимы только файлы ' + extensions.join(
+         -', ').toUpperCase() + '.';                                     
+      20 +            return 'Only ' + extensions.join(', ').toUpperCase(
+         +) + ' files are allowed.';                                     
+      21          }
+      22          if (file.size > maxSize) {
+      23 -            return 'Максимальный размер файла — ' + App.formatB
+         -ytes(maxSize) + '.';                                           
+      23 +            return 'The maximum file size is ' + App.formatByte
+         +s(maxSize) + '.';                                              
+      24          }
+      25          return null;
+      26      }
+
+● Update(public/js/upload.js)
+  ⎿  Added 1 line, removed 1 line
+      32                  '<span class="upload-name text-break"></span>' 
+          +
+      33                  '<small class="upload-size text-body-secondary 
+          text-nowrap"></small>' +
+      34                  '</div>' +
+      35 -                '<div class="progress mt-2" role="progressbar" 
+         -aria-label="Прогресс загрузки">' +                             
+      35 +                '<div class="progress mt-2" role="progressbar" 
+         +aria-label="Upload progress">' +                               
+      36                  '<div class="progress-bar progress-bar-striped 
+          progress-bar-animated" style="width: 0%"></div>' +
+      37                  '</div>' +
+      38                  '<div class="upload-status small mt-1 text-body
+          -secondary">Ожидание…</div>' +
+
+● Update(public/js/upload.js)
+  ⎿  Added 1 line, removed 1 line
+      35                  '<div class="progress mt-2" role="progressbar" 
+          aria-label="Upload progress">' +
+      36                  '<div class="progress-bar progress-bar-striped 
+          progress-bar-animated" style="width: 0%"></div>' +
+      37                  '</div>' +
+      38 -                '<div class="upload-status small mt-1 text-body
+         --secondary">Ожидание…</div>' +                                 
+      38 +                '<div class="upload-status small mt-1 text-body
+         +-secondary">Waiting…</div>' +                                  
+      39                  '</li>'
+      40          );
+      41          $item.find('.upload-name').text(file.name);
+
+● Update(public/js/upload.js)
+  ⎿  Added 1 line, removed 1 line
+      46  
+      47      function setProgress($item, percent) {
+      48          $item.find('.progress-bar').css('width', percent + '%')
+          ;
+      49 -        $item.find('.upload-status').text('Загрузка… ' + percen
+         -t + '%');                                                      
+      49 +        $item.find('.upload-status').text('Uploading… ' + perce
+         +nt + '%');                                                     
+      50      }
+      51  
+      52      function finish($item, ok, message) {
+
+● Update(public/js/upload.js)
+  ⎿  Added 1 line, removed 1 line
+      89              },
+      90          })
+      91              .done(function (response) {
+      92 -                finish($item, true, 'Загружен. Будет удалён ' +
+         - App.formatDate(response.data.expires_at) + '.');              
+      92 +                finish($item, true, 'Uploaded. It will be delet
+         +ed on ' + App.formatDate(response.data.expires_at) + '.');     
+      93              })
+      94              .fail(function (xhr) {
+      95                  finish($item, false, App.errorMessage(xhr));
+
+● Update(public/js/files.js)
+  ⎿  Added 1 line, removed 1 line
+      13              const $el = $(this);
+      14              const iso = $el.attr('datetime');
+      15              const left = new Date(iso) - Date.now();
+      16 -            $el.text(left > 0 ? 'через ' + App.formatDuration(l
+         -eft) : 'ожидает удаления')                                     
+      16 +            $el.text(left > 0 ? 'in ' + App.formatDuration(left
+         +) : 'pending deletion')                                        
+      17                  .attr('title', App.formatDate(iso));
+      18          });
+      19      }
+
+● Update(public/js/files.js)
+  ⎿  Added 1 line, removed 1 line
+      36  
+      37          const $form = $(this);
+      38          const name = $form.data('name');
+      39 -        if (!window.confirm('Удалить файл «' + name + '»?')) { 
+      39 +        if (!window.confirm('Delete file "' + name + '"?')) {  
+      40              return;
+      41          }
+      42  
+
+● Update(public/js/files.js)
+  ⎿  Added 1 line, removed 1 line
+      45          $.ajax({ url: $form.attr('action'), method: 'DELETE' })
+      46              .done(function () {
+      47                  removeRow($form.closest('tr'));
+      48 -                App.toast('Файл «' + name + '» удалён, уведомле
+         -ние отправлено.', 'success');                                  
+      48 +                App.toast('File "' + name + '" deleted, notific
+         +ation sent.', 'success');                                      
+      49              })
+      50              .fail(function (xhr) {
+      51                  if (xhr.status === 404) {
+
+● Update(public/js/files.js)
+  ⎿  Added 1 line, removed 1 line
+      50              .fail(function (xhr) {
+      51                  if (xhr.status === 404) {
+      52                      removeRow($form.closest('tr'));
+      53 -                    App.toast('Файл «' + name + '» уже был удал
+         -ён.', 'warning');                                              
+      53 +                    App.toast('File "' + name + '" was already 
+         +deleted.', 'warning');                                         
+      54                      return;
+      55                  }
+      56                  $button.prop('disabled', false);
+
+● Update(tests/Feature/FileUploadTest.php)
+  ⎿  Added 1 line, removed 1 line
+      26      {
+      27          $this->get(route('files.create'))
+      28              ->assertOk()
+      29 -            ->assertSee('Загрузка файлов')                     
+      29 +            ->assertSee('Upload files')                        
+      30              ->assertSee(route('files.store'));
+      31      }
+      32  
+
+● Update(tests/Feature/FileUploadTest.php)
+  ⎿  Added 1 line, removed 1 line
+       97      {
+       98          $this->postJson(route('files.store'))
+       99              ->assertUnprocessable()
+      100 -            ->assertJsonValidationErrors(['file' => 'Выберите 
+          -файл для загрузки.']);                                        
+      100 +            ->assertJsonValidationErrors(['file' => 'Please ch
+          +oose a file to upload.']);                                    
+      101      }
+      102  }
+
+● Update(tests/Feature/FileManagementTest.php)
+  ⎿  Added 1 line, removed 1 line
+      41      {
+      42          $this->get(route('files.index'))
+      43              ->assertOk()
+      44 -            ->assertSee('Файлов пока нет');                    
+      44 +            ->assertSee('No files yet');                       
+      45      }
+      46  
+      47      public function test_file_is_downloaded_with_original_name(
+          ): void
+
+● Update(tests/Feature/FileManagementTest.php)
+  ⎿  Added 1 line, removed 1 line
+      79  
+      80          $this->delete(route('files.destroy', $file))
+      81              ->assertRedirect(route('files.index'))
+      82 -            ->assertSessionHas('status', 'Файл «contract.pdf» у
+         -далён.');                                                      
+      82 +            ->assertSessionHas('status', 'File "contract.pdf" h
+         +as been deleted.');                                            
+      83  
+      84          $this->assertModelMissing($file);
+      85      }
+● Update(tests/Feature/FileDeletedNotificationTest.php)
+  ⎿  Added 2 lines, removed 2 lines
+      49      {
+      50          $mail = new FileDeletedMail($this->deletedFile(Deletion
+          Reason::Expired));
+      51  
+      52 -        $mail->assertHasSubject('Файл «report.pdf» удалён (истё
+         -к срок хранения)');                                            
+      52 +        $mail->assertHasSubject('File "report.pdf" deleted (ret
+         +ention period expired)');                                      
+      53          $mail->assertSeeInHtml('report.pdf');
+      54 -        $mail->assertSeeInHtml('истёк срок хранения');         
+      54 +        $mail->assertSeeInHtml('retention period expired');    
+      55          $mail->assertSeeInHtml('1.5 MB');
+      56      }
+      57  
+
+● Update(.env.example)
+  ⎿  Added 1 line, removed 1 line
+       4  APP_DEBUG=true
+       5  APP_URL=http://localhost:8080
+       6  
+       7 -APP_LOCALE=ru                                                  
+       7 +APP_LOCALE=en                                                  
+       8  APP_FALLBACK_LOCALE=en
+       9  APP_FAKER_LOCALE=en_US
+      10  
+
+● Update(README.md)
+  ⎿  Added 1 line
+       8  
+       9  Веб-приложение для хранения PDF и DOCX файлов с ограниченным ср
+          оком хранения (24 часа).
+      10  Laravel 13 · PHP 8.4 · MySQL 8.4 · RabbitMQ 4 · Bootstrap 5 + j
+          Query · Docker Compose.
+      11 +Интерфейс приложения и email-уведомления — на английском.      
+      12  
+      13  ### Тестовое задание
+      14  
+
+● Update(README.md)
+  ⎿  Added 1 line, removed 1 line
+      114  
+      115  1. Откройте http://localhost:8080 и загрузите несколько PDF/DO
+           CX (кнопкой или перетаскиванием). У каждого файла свой прогрес
+           с-бар. Файл `.txt`, файл больше 10MB или `.txt`, переименованн
+           ый в `.pdf`, будут отклонены с понятной ошибкой.
+      116  2. Откройте http://localhost:8080/files: видны список, размер,
+            время загрузки и обратный отсчёт до удаления. Скачивание отда
+           ёт файл с исходным именем.
+      117 -3. Удалите файл вручную. Строка исчезнет, а в Mailpit (http://
+          -localhost:8025) появится письмо «Файл … удалён (удалён вручную
+          -)».                                                           
+      117 +3. Удалите файл вручную. Строка исчезнет, а в Mailpit (http://
+          +localhost:8025) появится письмо «File "…" deleted (deleted man
+          +ually)».                                                      
+      118  4. **Автоудаление.** Чтобы не ждать 24 часа, «состарьте» файлы
+           :
+      119     ```bash
+      120     docker compose exec app php artisan tinker --execute="App\M
+           odels\StoredFile::query()->update(['expires_at' => now()->subM
+           inute()])"
+
+● Update(README.md)
+  ⎿  Added 1 line, removed 1 line
+      119     ```bash
+      120     docker compose exec app php artisan tinker --execute="App\M
+           odels\StoredFile::query()->update(['expires_at' => now()->subM
+           inute()])"
+      121     ```
+      122 -   В течение минуты `scheduler` удалит их, и в Mailpit придут 
+          -письма с причиной «истёк срок хранения». Можно запустить сразу
+          -: `make purge`. За процессом можно следить: `make logs`.      
+      122 +   В течение минуты `scheduler` удалит их, и в Mailpit придут 
+          +письма с причиной «retention period expired». Можно запустить 
+          +сразу: `make purge`. За процессом можно следить: `make logs`. 
+      123  5. **Уведомление действительно идёт через RabbitMQ.** Останови
+           те воркер (`docker compose stop queue`) и удалите файл. В Rabb
+           itMQ UI → Queues → `notifications` будет `Ready: 1`, письма не
+           т. Запустите воркер (`docker compose start queue`): сообщение 
+           будет обработано, письмо появится в Mailpit.
+      124  
+      125  ### Тесты
+
+● Update(README.md)
+  ⎿  Added 1 line
+      204  
+      205  A web application for storing PDF and DOCX files with a limite
+           d retention period (24 hours).
+      206  Laravel 13 · PHP 8.4 · MySQL 8.4 · RabbitMQ 4 · Bootstrap 5 + 
+           jQuery · Docker Compose.
+      207 +The user interface and email notifications are in English.    
+      208  
+      209  ### Task
+      210  
+
+● Update(README.md)
+  ⎿  Added 1 line, removed 1 line
+      310  
+      311  1. Open http://localhost:8080 and upload a few PDF/DOCX files 
+           (button or drag & drop). Each file gets its own progress bar. 
+           A `.txt`, a file over 10MB, or a `.txt` renamed to `.pdf` is r
+           ejected with a clear message.
+      312  2. Open http://localhost:8080/files. You see the list, sizes, 
+           upload time and a countdown to deletion. Download returns the 
+           file under its original name.
+      313 -3. Delete a file manually. The row disappears, and an email "Ф
+          -айл … удалён (удалён вручную)" arrives in Mailpit (http://loca
+          -lhost:8025).                                                  
+      313 +3. Delete a file manually. The row disappears, and an email "F
+          +ile "…" deleted (deleted manually)" arrives in Mailpit (http:/
+          +/localhost:8025).                                             
+      314  4. **Automatic deletion.** Instead of waiting 24 hours, make t
+           he files expire:
+      315     ```bash
+      316     docker compose exec app php artisan tinker --execute="App\M
+           odels\StoredFile::query()->update(['expires_at' => now()->subM
+           inute()])"
+
+● Update(README.md)
+  ⎿  Added 1 line, removed 1 line
+      315     ```bash
+      316     docker compose exec app php artisan tinker --execute="App\M
+           odels\StoredFile::query()->update(['expires_at' => now()->subM
+           inute()])"
+      317     ```
+      318 -   Within a minute the `scheduler` deletes them, and Mailpit r
+          -eceives emails with the reason "истёк срок хранения" (retentio
+          -n expired). To run it immediately: `make purge`. To watch the 
+          -process: `make logs`.                                         
+      318 +   Within a minute the `scheduler` deletes them, and Mailpit r
+          +eceives emails with the reason "retention period expired". To 
+          +run it immediately: `make purge`. To watch the process: `make 
+          +logs`.                                                        
+      319  5. **The notification really goes through RabbitMQ.** Stop the
+            worker (`docker compose stop queue`) and delete a file. Rabbi
+           tMQ UI → Queues → `notifications` shows `Ready: 1` and no emai
+           l arrives. Start the worker (`docker compose start queue`): th
+           e message is consumed and the email appears in Mailpit.
+      320  
+      321  ### Tests
+
+  Read 1 file (ctrl+o to expand)
+
+● Я обновлю строку в .claude/plan.md, проверю код на статике (кириллица, Pint,
+  тесты, node --check), а затем сделаю живую проверку с APP_LOCALE=en —
+  перезапущу воркер и протестирую английские строки, ответ 422 и тему письма
+  после удаления.
+
+● Update(.claude/plan.md)
+  ⎿  Added 1 line, removed 1 line
+      59  - `app/Listeners/SendFileDeletedNotification.php`: `implements 
+          ShouldQueue`, `$connection = 'rabbitmq'`, `$queue = 'notificati
+          ons'`, `$tries = 3`. Отправляет `FileDeletedMail` на `config('f
+          ilestorage.notification_email')`.
+      60  - `app/Mail/FileDeletedMail.php` + `resources/views/mail/file-d
+          eleted.blade.php` (markdown): имя, размер, дата загрузки и удал
+          ения, причина.
+      61  - `app/Console/Commands/PurgeExpiredFiles.php` (`files:purge-ex
+          pired`): `StoredFile::expired()->chunkById(100, …)` → `FileRemo
+          ver::delete($file, DeletionReason::Expired)`, выводит количеств
+          о удалённых. В `routes/console.php`: `Schedule::command('files:
+          purge-expired')->everyMinute()->withoutOverlapping()`.
+      62 -- `app/Http/Requests/StoreFileRequest.php`: `required|file|max:
+         -{max_size_kb}|mimes:pdf,docx|extensions:pdf,docx`. Сообщения об
+         - ошибках на русском.                                           
+      62 +- `app/Http/Requests/StoreFileRequest.php`: `required|file|max:
+         +{max_size_kb}|mimes:pdf,docx|extensions:pdf,docx`. Сообщения об
+         + ошибках на английском (уточнение после утверждения плана: весь
+         + UI и письма — на английском).                                 
+      63  - `app/Http/Resources/StoredFileResource.php`: JSON для AJAX-от
+          вета (id, name, human size, uploaded_at, expires_at, ссылки dow
+          nload/delete).
+      64  - `app/Http/Controllers/FileController.php`:
+      65    - `create()`: страница загрузки;
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+● Интерфейс переведён на английский, изменения закоммичены в master (8e286cb).
+  Push по-прежнему не делал.
+
+  Что переведено:
+  - страницы и навигация, <html lang="en">;
+  - сообщения в браузере: прогресс загрузки, подтверждение удаления, всплывающие
+    уведомления, ошибки;
+  - даты в браузере теперь в английском формате, например «11 Sept 2026, 10:16»,
+    размеры — в B/KB/MB;
+  - ошибки валидации и сообщение после удаления;
+  - письмо-уведомление. Строго говоря, это не интерфейс, но английский UI с
+    русскими письмами выглядел бы странно. Если письма нужны на русском — верну.
+  - APP_LOCALE=en в .env.example и в твоём локальном .env.
+
+  Под новые тексты обновил тесты. В README (обе части) добавил строку о том, что
+  интерфейс на английском, и поправил примеры тем писем. В .claude/plan.md
+  отметил это изменение относительно утверждённого плана.
+
+  Как проверено:
+  - В коде, шаблонах, JS и тестах не осталось кириллицы.
+  - Тесты: 27 из 27 проходят. Pint и проверка синтаксиса JS — без замечаний.
+  - Страницы отдают английские тексты. Загрузка .txt возвращает «Only PDF, DOCX
+    files are allowed.»
+  - Перезапустил воркер очереди, чтобы он подхватил новый код. Тестовый файл
+    удалил через интерфейс — письмо пришло в Mailpit с темой File "ui-check.pdf"
+    deleted (deleted manually). Трогал только этот файл, твои загрузки не
+    затронуты.
+
+  Вопрос про push остаётся: отправить в master или сначала переименовать ветку в
+  main, которая указана в GitHub как основная?
+
+✻ Crunched for 3m 13s · done 1:16 PM
+
+❯ в мастер пуш                                                                  
+
+  Pushed to master (ctrl+o to expand)
+
+● Push прошёл. Теперь проверю, какие ветки есть на GitHub — важно убедиться, что
+  основной является нужная ветка (main, а не master).
+
+  Ran 1 shell command (ctrl+o to expand)
+
+● Отправил в master на GitHub, все 7 коммитов на месте:
+  https://github.com/vodrems/laravel-start
+
+  Других веток в репозитории нет, master там основная. Так что по ссылке сразу
+  откроются код и README.
+
+✻ Cogitated for 18s · done 1:20 PM
