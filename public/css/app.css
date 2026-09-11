@@ -1,0 +1,9 @@
+.dropzone {
+    border: 2px dashed var(--bs-border-color);
+    transition: border-color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.dropzone.is-dragover {
+    border-color: var(--bs-primary);
+    background-color: var(--bs-primary-bg-subtle);
+}
